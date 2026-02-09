@@ -102,25 +102,7 @@ async function buildServer() {
   return fastify
 }
 
-async function runMigrations() {
-  if (process.env.NODE_ENV === 'production') {
-    const { execSync } = await import('child_process')
-    try {
-      console.log('Running database migrations...')
-      execSync('npx prisma migrate deploy --schema=/app/packages/database/prisma/schema.prisma', {
-        stdio: 'inherit',
-        timeout: 30000,
-      })
-      console.log('Database migrations completed.')
-    } catch (err) {
-      console.error('Migration failed:', err)
-      process.exit(1)
-    }
-  }
-}
-
 async function start() {
-  await runMigrations()
   const fastify = await buildServer()
 
   // Setup Socket.io with Fastify's server
