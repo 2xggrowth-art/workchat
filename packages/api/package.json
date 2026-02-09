@@ -25,14 +25,15 @@
     "@workchat/shared": "workspace:*",
     "bcrypt": "^5.1.1",
     "fastify": "^4.26.0",
+    "node-cron": "^3.0.3",
     "sharp": "^0.34.5",
     "socket.io": "^4.7.4",
-    "twilio": "^5.11.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^20.11.0",
+    "@types/node-cron": "^3.0.11",
     "@types/sharp": "^0.32.0",
     "pino-pretty": "^10.3.0",
     "tsup": "^8.0.0",
