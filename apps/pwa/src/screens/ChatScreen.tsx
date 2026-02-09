@@ -54,14 +54,14 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
   const { messages, fetchMessages, addMessage } = useChatStore()
   const chatMessages = messages[chat.id] || []
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Typing indicator state
   const [typingUsers, setTypingUsers] = useState<string[]>([])
@@ -71,7 +71,7 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Message[]>([])
-  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null)
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Tasks-only filter state
   const [tasksOnly, setTasksOnly] = useState(false)
