@@ -46,7 +46,8 @@ async function buildServer() {
   })
 
   await fastify.register(helmet, {
-    contentSecurityPolicy: false, // Disable for development
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 
   await fastify.register(cookie)
