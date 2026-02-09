@@ -18,8 +18,8 @@ async function main() {
 
   console.log('🧹 Cleaned existing data')
 
-  // Hash passwords
-  const passwordHash = await hash('password123', 12)
+  // Hash PINs
+  const pinHash = await hash('1234', 12)
 
   // ============================================
   // CREATE USERS
@@ -28,9 +28,10 @@ async function main() {
   const superAdmin = await prisma.user.create({
     data: {
       phone: '9999999999',
-      password: passwordHash,
+      password: pinHash,
       name: 'Super Admin',
       role: UserRole.SUPER_ADMIN,
+      isApproved: true,
     },
   })
   console.log('👑 Created Super Admin:', superAdmin.name)
@@ -38,18 +39,20 @@ async function main() {
   const admin1 = await prisma.user.create({
     data: {
       phone: '9999999998',
-      password: passwordHash,
+      password: pinHash,
       name: 'Rajesh Kumar',
       role: UserRole.ADMIN,
+      isApproved: true,
     },
   })
 
   const admin2 = await prisma.user.create({
     data: {
       phone: '9999999997',
-      password: passwordHash,
+      password: pinHash,
       name: 'Priya Sharma',
       role: UserRole.ADMIN,
+      isApproved: true,
     },
   })
   console.log('👔 Created 2 Admins')
@@ -57,45 +60,50 @@ async function main() {
   const staff1 = await prisma.user.create({
     data: {
       phone: '9999999996',
-      password: passwordHash,
+      password: pinHash,
       name: 'Amit Patel',
       role: UserRole.STAFF,
+      isApproved: true,
     },
   })
 
   const staff2 = await prisma.user.create({
     data: {
       phone: '9999999995',
-      password: passwordHash,
+      password: pinHash,
       name: 'Sneha Gupta',
       role: UserRole.STAFF,
+      isApproved: true,
     },
   })
 
   const staff3 = await prisma.user.create({
     data: {
       phone: '9999999994',
-      password: passwordHash,
+      password: pinHash,
       name: 'Rahul Singh',
       role: UserRole.STAFF,
+      isApproved: true,
     },
   })
 
   const staff4 = await prisma.user.create({
     data: {
       phone: '9999999993',
-      password: passwordHash,
+      password: pinHash,
       name: 'Neha Verma',
       role: UserRole.STAFF,
+      isApproved: true,
     },
   })
 
   const staff5 = await prisma.user.create({
     data: {
       phone: '9999999992',
-      password: passwordHash,
+      password: pinHash,
       name: 'Vikram Joshi',
       role: UserRole.STAFF,
+      isApproved: true,
     },
   })
   console.log('👷 Created 5 Staff members')
@@ -544,7 +552,7 @@ async function main() {
   console.log('   - 2 Group chats')
   console.log('   - 5 Tasks (various statuses)')
   console.log('')
-  console.log('🔑 Default password for all users: password123')
+  console.log('🔑 Default PIN for all users: 1234')
 }
 
 main()

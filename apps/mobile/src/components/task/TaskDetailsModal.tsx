@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native'
+import * as ImagePicker from 'expo-image-picker'
+import * as DocumentPicker from 'expo-document-picker'
 import { api } from '../../services/api'
 import { useAuthStore } from '../../stores/authStore'
 
@@ -45,21 +47,41 @@ interface Task {
   }>
   messageContent?: string
   isOverdue?: boolean
+  tags?: string[]
+  sopInstructions?: string
+  isRecurring?: boolean
+  recurringRule?: string
+  proofs?: Array<{
+    id: string
+    type: string
+    url: string
+    createdAt: string
+  }>
 }
 
-const TASK_STATUS_COLORS: Record<string, string> = {
-  PENDING: '#3B82F6',
-  IN_PROGRESS: '#EAB308',
-  COMPLETED: '#22C55E',
-  APPROVED: '#059669',
-  REOPENED: '#A855F7',
+const STATUS_COLORS: Record<string, string> = {
+  PENDING: '#2196F3',
+  IN_PROGRESS: '#FFC107',
+  COMPLETED: '#4CAF50',
+  APPROVED: '#4CAF50',
+  REOPENED: '#9C27B0',
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  LOW: '#6B7280',
-  MEDIUM: '#3B82F6',
-  HIGH: '#F97316',
-  URGENT: '#EF4444',
+const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
+  LOW: { bg: 'rgba(33,150,243,0.1)', text: '#2196F3' },
+  MEDIUM: { bg: 'rgba(255,193,7,0.1)', text: '#F57F17' },
+  HIGH: { bg: 'rgba(255,152,0,0.1)', text: '#FF9800' },
+  URGENT: { bg: 'rgba(244,67,54,0.1)', text: '#F44336' },
+}
+
+const AVATAR_COLORS = ['#E91E63', '#9C27B0', '#3F51B5', '#009688', '#FF5722', '#795548']
+
+function getAvatarColor(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
 export default function TaskDetailsModal({
@@ -76,12 +98,14 @@ export default function TaskDetailsModal({
   const [updating, setUpdating] = useState(false)
   const [activeTab, setActiveTab] = useState<'details' | 'activity'>('details')
 
-  const isGroupAdmin = memberRole === 'OWNER' || memberRole === 'ADMIN'
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
+  const isGroupAdmin = memberRole === 'OWNER' || memberRole === 'ADMIN' || isAdmin
   const isTaskOwner = task?.ownerId === user?.id
 
   useEffect(() => {
     if (visible && taskId) {
       fetchTask()
+      setActiveTab('details')
     }
   }, [visible, taskId])
 
@@ -105,7 +129,6 @@ export default function TaskDetailsModal({
       await fetchTask()
       onTaskUpdated?.()
     } catch (error: any) {
-      console.error('Failed to update status:', error)
       Alert.alert('Error', error.response?.data?.error?.message || 'Failed to update task status')
     } finally {
       setUpdating(false)
@@ -117,7 +140,6 @@ export default function TaskDetailsModal({
       await api.post(`/api/tasks/${taskId}/steps/${stepId}/complete`)
       await fetchTask()
     } catch (error: any) {
-      console.error('Failed to complete step:', error)
       Alert.alert('Error', error.response?.data?.error?.message || 'Failed to complete step')
     }
   }
@@ -129,7 +151,6 @@ export default function TaskDetailsModal({
       await fetchTask()
       onTaskUpdated?.()
     } catch (error: any) {
-      console.error('Failed to approve task:', error)
       Alert.alert('Error', error.response?.data?.error?.message || 'Failed to approve task')
     } finally {
       setUpdating(false)
@@ -143,10 +164,51 @@ export default function TaskDetailsModal({
       await fetchTask()
       onTaskUpdated?.()
     } catch (error: any) {
-      console.error('Failed to reopen task:', error)
       Alert.alert('Error', error.response?.data?.error?.message || 'Failed to reopen task')
     } finally {
       setUpdating(false)
+    }
+  }
+
+  const uploadProof = async () => {
+    Alert.alert('Upload Proof', 'Choose source', [
+      {
+        text: 'Photo',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+          if (status !== 'granted') return
+          const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 })
+          if (!result.canceled && result.assets[0]) {
+            await submitProof(result.assets[0].uri, 'IMAGE')
+          }
+        },
+      },
+      {
+        text: 'File',
+        onPress: async () => {
+          const result = await DocumentPicker.getDocumentAsync({ type: '*/*' })
+          if (!result.canceled && result.assets[0]) {
+            await submitProof(result.assets[0].uri, 'FILE')
+          }
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ])
+  }
+
+  const submitProof = async (uri: string, type: string) => {
+    try {
+      const formData = new FormData()
+      const filename = uri.split('/').pop() || 'proof'
+      formData.append('file', { uri, name: filename, type: 'application/octet-stream' } as any)
+      formData.append('type', type)
+      await api.post(`/api/tasks/${taskId}/proof`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      await fetchTask()
+      onTaskUpdated?.()
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.error?.message || 'Failed to upload proof')
     }
   }
 
@@ -156,9 +218,45 @@ export default function TaskDetailsModal({
       weekday: 'short',
       month: 'short',
       day: 'numeric',
+    }) + ', ' + date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
+      hour12: true,
     })
+  }
+
+  const getStatusColor = () => {
+    if (!task) return '#2196F3'
+    if (task.isOverdue) return '#F44336'
+    return STATUS_COLORS[task.status] || '#2196F3'
+  }
+
+  const getStatusLabel = () => {
+    if (!task) return 'PENDING'
+    if (task.isOverdue) return 'OVERDUE'
+    return task.status.replace('_', ' ')
+  }
+
+  const getActivityIcon = (action: string) => {
+    switch (action) {
+      case 'CREATED': return '+'
+      case 'STATUS_CHANGED': return '>'
+      case 'STEP_COMPLETED': return 'V'
+      case 'APPROVED': return 'V'
+      case 'REOPENED': return 'R'
+      default: return '*'
+    }
+  }
+
+  const getActivityColor = (action: string) => {
+    switch (action) {
+      case 'CREATED': return '#2196F3'
+      case 'STATUS_CHANGED': return '#FFC107'
+      case 'STEP_COMPLETED': return '#4CAF50'
+      case 'APPROVED': return '#4CAF50'
+      case 'REOPENED': return '#9C27B0'
+      default: return '#9E9E9E'
+    }
   }
 
   const getActivityText = (activity: any) => {
@@ -185,21 +283,19 @@ export default function TaskDetailsModal({
   const canResumeWorking = isTaskOwner && task?.status === 'REOPENED'
   const canApprove = isGroupAdmin && task?.status === 'COMPLETED'
 
+  const statusColor = getStatusColor()
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modal}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeText}>X</Text>
+          {/* App Bar style header */}
+          <View style={styles.appBar}>
+            <TouchableOpacity onPress={onClose} style={styles.appBarBack}>
+              <Text style={styles.appBarBackText}>{'<'}</Text>
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Task Details</Text>
-            {task && (
-              <View style={[styles.statusBadge, { backgroundColor: TASK_STATUS_COLORS[task.status] }]}>
-                <Text style={styles.statusBadgeText}>{task.status.replace('_', ' ')}</Text>
-              </View>
-            )}
+            <Text style={styles.appBarTitle}>Task Details</Text>
+            <View style={{ width: 40 }} />
           </View>
 
           {loading ? (
@@ -208,6 +304,13 @@ export default function TaskDetailsModal({
             </View>
           ) : task ? (
             <>
+              {/* Colored status header */}
+              <View style={[styles.taskHeader, { backgroundColor: statusColor }]}>
+                <Text style={styles.taskHeaderIcon}>T</Text>
+                <Text style={styles.taskHeaderTitle} numberOfLines={2}>{task.title}</Text>
+                <Text style={styles.taskHeaderStatus}>{getStatusLabel()}</Text>
+              </View>
+
               {/* Tabs */}
               <View style={styles.tabs}>
                 <TouchableOpacity
@@ -228,70 +331,104 @@ export default function TaskDetailsModal({
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.content}>
+              <ScrollView style={styles.detailBody}>
                 {activeTab === 'details' ? (
                   <>
-                    {/* Title */}
-                    <View style={styles.section}>
-                      <Text style={styles.taskTitle}>{task.title}</Text>
-                      {task.messageContent && (
-                        <Text style={styles.taskDescription}>{task.messageContent}</Text>
-                      )}
-                    </View>
+                    {/* Info Card */}
+                    <View style={styles.detailCard}>
+                      <Text style={styles.detailCardTitle}>INFORMATION</Text>
 
-                    {/* Meta info */}
-                    <View style={styles.metaGrid}>
-                      <View style={styles.metaItem}>
-                        <Text style={styles.metaLabel}>Assigned to</Text>
-                        <View style={styles.metaValueRow}>
-                          <View style={styles.avatar}>
-                            <Text style={styles.avatarText}>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Assigned to</Text>
+                        <View style={styles.detailValueRow}>
+                          <View style={[styles.detailAvatar, { backgroundColor: getAvatarColor(task.owner?.name || '') }]}>
+                            <Text style={styles.detailAvatarText}>
                               {task.owner?.name?.charAt(0).toUpperCase()}
                             </Text>
                           </View>
-                          <Text style={styles.metaValue}>{task.owner?.name}</Text>
+                          <Text style={styles.detailValue}>{task.owner?.name}</Text>
                         </View>
                       </View>
 
-                      <View style={styles.metaItem}>
-                        <Text style={styles.metaLabel}>Priority</Text>
-                        <View
-                          style={[
-                            styles.priorityBadge,
-                            { backgroundColor: PRIORITY_COLORS[task.priority] + '20' },
-                          ]}
-                        >
-                          <Text style={[styles.priorityText, { color: PRIORITY_COLORS[task.priority] }]}>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Priority</Text>
+                        <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_COLORS[task.priority]?.bg }]}>
+                          <Text style={[styles.priorityBadgeText, { color: PRIORITY_COLORS[task.priority]?.text }]}>
                             {task.priority}
                           </Text>
                         </View>
                       </View>
 
                       {task.dueDate && (
-                        <View style={styles.metaItem}>
-                          <Text style={styles.metaLabel}>Due date</Text>
-                          <Text style={[styles.metaValue, task.isOverdue && styles.overdueText]}>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Due date</Text>
+                          <Text style={[styles.detailValue, task.isOverdue && { color: '#F44336' }]}>
                             {formatDate(task.dueDate)}
                           </Text>
                         </View>
                       )}
 
-                      <View style={styles.metaItem}>
-                        <Text style={styles.metaLabel}>Created by</Text>
-                        <Text style={styles.metaValue}>{task.createdBy?.name}</Text>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Created by</Text>
+                        <Text style={styles.detailValue}>{task.createdBy?.name}</Text>
+                      </View>
+
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Status</Text>
+                        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+                          <Text style={styles.statusBadgeText}>{getStatusLabel()}</Text>
+                        </View>
                       </View>
                     </View>
 
-                    {/* Checklist */}
+                    {/* Description card */}
+                    {task.messageContent && (
+                      <View style={styles.detailCard}>
+                        <Text style={styles.detailCardTitle}>DESCRIPTION</Text>
+                        <Text style={styles.descriptionText}>{task.messageContent}</Text>
+                      </View>
+                    )}
+
+                    {/* Tags */}
+                    {task.tags && task.tags.length > 0 && (
+                      <View style={styles.detailCard}>
+                        <Text style={styles.detailCardTitle}>TAGS</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {task.tags.map((tag, i) => (
+                            <View key={i} style={{ backgroundColor: 'rgba(18,140,126,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                              <Text style={{ fontSize: 13, color: '#128C7E' }}>{tag}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+
+                    {/* SOP */}
+                    {task.sopInstructions && (
+                      <View style={styles.detailCard}>
+                        <Text style={styles.detailCardTitle}>SOP INSTRUCTIONS</Text>
+                        <Text style={styles.descriptionText}>{task.sopInstructions}</Text>
+                      </View>
+                    )}
+
+                    {/* Recurring */}
+                    {task.isRecurring && (
+                      <View style={styles.detailCard}>
+                        <Text style={styles.detailCardTitle}>RECURRING</Text>
+                        <Text style={styles.descriptionText}>{task.recurringRule || 'Recurring'}</Text>
+                      </View>
+                    )}
+
+                    {/* Checklist card */}
                     {task.steps && task.steps.length > 0 && (
-                      <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>
-                          Checklist ({task.steps.filter((s) => s.completedAt).length}/{task.steps.length})
+                      <View style={styles.detailCard}>
+                        <Text style={styles.detailCardTitle}>
+                          CHECKLIST ({task.steps.filter((s) => s.completedAt).length}/{task.steps.length})
                         </Text>
                         {task.steps.map((step) => (
                           <TouchableOpacity
                             key={step.id}
-                            style={styles.stepItem}
+                            style={styles.checklistItem}
                             onPress={() => {
                               if (!step.completedAt && isTaskOwner) {
                                 completeStep(step.id)
@@ -305,12 +442,12 @@ export default function TaskDetailsModal({
                                 !!step.completedAt && styles.checkboxChecked,
                               ]}
                             >
-                              {!!step.completedAt && <Text style={styles.checkmark}>✓</Text>}
+                              {!!step.completedAt && <Text style={styles.checkmark}>V</Text>}
                             </View>
                             <Text
                               style={[
-                                styles.stepText,
-                                !!step.completedAt && styles.stepTextCompleted,
+                                styles.checklistText,
+                                !!step.completedAt && styles.checklistTextDone,
                               ]}
                             >
                               {step.content}
@@ -323,27 +460,18 @@ export default function TaskDetailsModal({
                   </>
                 ) : (
                   /* Activity Tab */
-                  <View style={styles.section}>
+                  <View style={styles.detailCard}>
+                    <Text style={styles.detailCardTitle}>TIMELINE</Text>
                     {task.activities && task.activities.length > 0 ? (
                       task.activities.map((activity) => (
-                        <View key={activity.id} style={styles.activityItem}>
-                          <View style={styles.activityIcon}>
-                            <Text style={styles.activityIconText}>
-                              {activity.action === 'CREATED' && '+'}
-                              {activity.action === 'STATUS_CHANGED' && '→'}
-                              {activity.action === 'STEP_COMPLETED' && '✓'}
-                              {activity.action === 'APPROVED' && '✓'}
-                              {activity.action === 'REOPENED' && '↩'}
-                            </Text>
-                          </View>
-                          <View style={styles.activityContent}>
-                            <Text style={styles.activityText}>
-                              <Text style={styles.activityUser}>{activity.user?.name}</Text>
+                        <View key={activity.id} style={styles.timelineItem}>
+                          <View style={[styles.timelineDot, { backgroundColor: getActivityColor(activity.action) }]} />
+                          <View style={styles.timelineContent}>
+                            <Text style={styles.timelineText}>
+                              <Text style={styles.timelineUser}>{activity.user?.name}</Text>
                               {' '}{getActivityText(activity)}
                             </Text>
-                            <Text style={styles.activityTime}>
-                              {formatDate(activity.createdAt)}
-                            </Text>
+                            <Text style={styles.timelineTime}>{formatDate(activity.createdAt)}</Text>
                           </View>
                         </View>
                       ))
@@ -358,42 +486,42 @@ export default function TaskDetailsModal({
               <View style={styles.footer}>
                 {canStartWorking && (
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.startButton]}
+                    style={[styles.actionBtn, { backgroundColor: '#FFC107' }]}
                     onPress={() => updateStatus('IN_PROGRESS')}
                     disabled={updating}
                   >
                     {updating ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
-                      <Text style={styles.actionButtonText}>Start Working</Text>
+                      <Text style={styles.actionBtnText}>Start Working</Text>
                     )}
                   </TouchableOpacity>
                 )}
 
                 {canMarkComplete && (
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.completeButton]}
+                    style={[styles.actionBtn, { backgroundColor: '#4CAF50' }]}
                     onPress={() => updateStatus('COMPLETED')}
                     disabled={updating}
                   >
                     {updating ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
-                      <Text style={styles.actionButtonText}>Mark as Completed</Text>
+                      <Text style={styles.actionBtnText}>Mark as Completed</Text>
                     )}
                   </TouchableOpacity>
                 )}
 
                 {canResumeWorking && (
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.startButton]}
+                    style={[styles.actionBtn, { backgroundColor: '#FFC107' }]}
                     onPress={() => updateStatus('IN_PROGRESS')}
                     disabled={updating}
                   >
                     {updating ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
-                      <Text style={styles.actionButtonText}>Resume Working</Text>
+                      <Text style={styles.actionBtnText}>Resume Working</Text>
                     )}
                   </TouchableOpacity>
                 )}
@@ -401,33 +529,42 @@ export default function TaskDetailsModal({
                 {canApprove && (
                   <View style={styles.adminActions}>
                     <TouchableOpacity
-                      style={[styles.actionButton, styles.reopenButton, { flex: 1, marginRight: 8 }]}
+                      style={[styles.actionBtn, { backgroundColor: '#9C27B0', flex: 1, marginRight: 8 }]}
                       onPress={reopenTask}
                       disabled={updating}
                     >
                       {updating ? (
                         <ActivityIndicator size="small" color="#FFFFFF" />
                       ) : (
-                        <Text style={styles.actionButtonText}>Reopen</Text>
+                        <Text style={styles.actionBtnText}>Reopen</Text>
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.actionButton, styles.approveButton, { flex: 1 }]}
+                      style={[styles.actionBtn, { backgroundColor: '#4CAF50', flex: 1 }]}
                       onPress={approveTask}
                       disabled={updating}
                     >
                       {updating ? (
                         <ActivityIndicator size="small" color="#FFFFFF" />
                       ) : (
-                        <Text style={styles.actionButtonText}>Approve</Text>
+                        <Text style={styles.actionBtnText}>Approve</Text>
                       )}
                     </TouchableOpacity>
                   </View>
                 )}
 
+                {isTaskOwner && task.status !== 'APPROVED' && (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: '#FF9800', marginBottom: 8 }]}
+                    onPress={uploadProof}
+                  >
+                    <Text style={styles.actionBtnText}>Upload Proof</Text>
+                  </TouchableOpacity>
+                )}
+
                 {task.status === 'APPROVED' && (
                   <View style={styles.approvedBanner}>
-                    <Text style={styles.approvedText}>Task Approved</Text>
+                    <Text style={styles.approvedBannerText}>Task Approved</Text>
                   </View>
                 )}
               </View>
@@ -450,59 +587,67 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modal: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F5F5F5',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '90%',
+    maxHeight: '92%',
     minHeight: '60%',
+    overflow: 'hidden',
   },
-  header: {
+  // App bar
+  appBar: {
+    backgroundColor: '#128C7E',
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    paddingHorizontal: 8,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+  appBarBack: {
+    padding: 8,
+    width: 40,
   },
-  closeText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
+  appBarBackText: {
     color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '500',
   },
-  loadingContainer: {
+  appBarTitle: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '500',
+    textAlign: 'center',
   },
+  // Task header (colored)
+  taskHeader: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  taskHeaderIcon: {
+    fontSize: 36,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  taskHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  taskHeaderStatus: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 4,
+  },
+  // Tabs
   tabs: {
     flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#EEEEEE',
   },
   tab: {
     flex: 1,
@@ -516,207 +661,202 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#6B7280',
+    color: '#9E9E9E',
   },
   tabTextActive: {
     color: '#128C7E',
   },
-  content: {
+  // Detail body
+  detailBody: {
     flex: 1,
     padding: 16,
   },
-  section: {
-    marginBottom: 20,
+  detailCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  taskTitle: {
-    fontSize: 18,
+  detailCardTitle: {
+    fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  taskDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
+    color: '#9E9E9E',
+    letterSpacing: 0.5,
     marginBottom: 12,
   },
-  metaGrid: {
+  detailRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -6,
-    marginBottom: 20,
+    alignItems: 'center',
+    paddingVertical: 6,
   },
-  metaItem: {
-    width: '50%',
-    paddingHorizontal: 6,
-    marginBottom: 12,
+  detailLabel: {
+    fontSize: 13,
+    color: '#9E9E9E',
+    minWidth: 80,
   },
-  metaLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  metaValue: {
+  detailValue: {
     fontSize: 14,
-    color: '#111827',
+    color: '#212121',
+    fontWeight: '500',
   },
-  metaValueRow: {
+  detailValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  avatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#128C7E',
+  detailAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
   },
-  avatarText: {
-    fontSize: 12,
+  detailAvatarText: {
+    fontSize: 13,
     fontWeight: '600',
     color: '#FFFFFF',
   },
   priorityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  priorityText: {
+  priorityBadgeText: {
     fontSize: 12,
     fontWeight: '600',
   },
-  overdueText: {
-    color: '#EF4444',
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  stepItem: {
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: '#616161',
+    lineHeight: 20,
+  },
+  // Checklist
+  checklistItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
-    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
   },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 4,
     borderWidth: 2,
-    borderColor: '#D1D5DB',
-    marginRight: 12,
+    borderColor: '#E0E0E0',
+    marginRight: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkboxChecked: {
-    backgroundColor: '#10B981',
-    borderColor: '#10B981',
+    backgroundColor: '#128C7E',
+    borderColor: '#128C7E',
   },
   checkmark: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
   },
-  stepText: {
+  checklistText: {
     flex: 1,
     fontSize: 14,
-    color: '#374151',
+    color: '#424242',
   },
-  stepTextCompleted: {
-    color: '#9CA3AF',
+  checklistTextDone: {
+    color: '#BDBDBD',
     textDecorationLine: 'line-through',
   },
   mandatory: {
-    color: '#EF4444',
+    color: '#F44336',
   },
-  activityItem: {
+  // Timeline
+  timelineItem: {
     flexDirection: 'row',
-    marginBottom: 16,
+    gap: 12,
+    paddingVertical: 8,
   },
-  activityIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 5,
   },
-  activityIconText: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  activityContent: {
+  timelineContent: {
     flex: 1,
   },
-  activityText: {
-    fontSize: 14,
-    color: '#374151',
+  timelineText: {
+    fontSize: 13,
+    color: '#424242',
   },
-  activityUser: {
+  timelineUser: {
     fontWeight: '600',
   },
-  activityTime: {
-    fontSize: 12,
-    color: '#9CA3AF',
+  timelineTime: {
+    fontSize: 11,
+    color: '#9E9E9E',
     marginTop: 2,
   },
   emptyText: {
     textAlign: 'center',
-    color: '#9CA3AF',
+    color: '#9E9E9E',
     paddingVertical: 20,
   },
   errorText: {
-    color: '#6B7280',
+    color: '#757575',
     fontSize: 16,
   },
-  footer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
   },
-  actionButton: {
+  // Footer
+  footer: {
+    padding: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#EEEEEE',
+  },
+  actionBtn: {
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionButtonText: {
+  actionBtnText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
-  },
-  startButton: {
-    backgroundColor: '#F59E0B',
-  },
-  completeButton: {
-    backgroundColor: '#10B981',
-  },
-  reopenButton: {
-    backgroundColor: '#8B5CF6',
-  },
-  approveButton: {
-    backgroundColor: '#059669',
   },
   adminActions: {
     flexDirection: 'row',
   },
   approvedBanner: {
-    backgroundColor: '#D1FAE5',
+    backgroundColor: 'rgba(76,175,80,0.1)',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
   },
-  approvedText: {
+  approvedBannerText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#059669',
+    color: '#4CAF50',
   },
 })

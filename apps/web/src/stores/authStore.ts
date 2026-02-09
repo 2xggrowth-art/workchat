@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { User } from '@workchat/shared'
+import { User, UserRole } from '@workchat/shared'
 import { api } from '../services/api'
 import { initSocket, disconnectSocket } from '../services/socket'
 
@@ -9,18 +9,12 @@ interface AuthState {
   token: string | null
   refreshToken: string | null
 
-  // OTP state
-  otpPhone: string | null
-  otpExpiresIn: number | null
-  isNewUser: boolean
-
   // Actions
-  requestOtp: (phone: string) => Promise<void>
-  verifyOtp: (phone: string, otp: string, name?: string) => Promise<{ isNewUser: boolean }>
+  login: (phone: string, pin: string) => Promise<void>
+  register: (phone: string, pin: string, name: string) => Promise<{ message: string }>
   logout: () => void
   refreshAccessToken: () => Promise<void>
   setUser: (user: User) => void
-  clearOtpState: () => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -29,37 +23,23 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       refreshToken: null,
-      otpPhone: null,
-      otpExpiresIn: null,
-      isNewUser: false,
 
-      requestOtp: async (phone: string) => {
-        const response = await api.post('/api/auth/request-otp', { phone })
-        const { expiresIn } = response.data.data
-
-        set({
-          otpPhone: phone,
-          otpExpiresIn: expiresIn,
-        })
-      },
-
-      verifyOtp: async (phone: string, otp: string, name?: string) => {
-        const response = await api.post('/api/auth/verify-otp', { phone, otp, name })
-        const { user, accessToken, refreshToken, isNewUser } = response.data.data
+      login: async (phone: string, pin: string) => {
+        const response = await api.post('/api/auth/login', { phone, pin })
+        const { user, accessToken, refreshToken } = response.data.data
 
         set({
           user,
           token: accessToken,
           refreshToken,
-          isNewUser,
-          otpPhone: null,
-          otpExpiresIn: null,
         })
 
-        // Initialize socket connection after login
         initSocket(accessToken)
+      },
 
-        return { isNewUser }
+      register: async (phone: string, pin: string, name: string) => {
+        const response = await api.post('/api/auth/register', { phone, pin, name })
+        return response.data.data
       },
 
       logout: () => {
@@ -69,9 +49,6 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           token: null,
           refreshToken: null,
-          otpPhone: null,
-          otpExpiresIn: null,
-          isNewUser: false,
         })
       },
 
@@ -93,13 +70,6 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user: User) => {
         set({ user })
       },
-
-      clearOtpState: () => {
-        set({
-          otpPhone: null,
-          otpExpiresIn: null,
-        })
-      },
     }),
     {
       name: 'workchat-auth',
@@ -112,10 +82,7 @@ export const useAuthStore = create<AuthState>()(
   )
 )
 
-// No more global admin check - permissions are per-chat
-// This hook can be removed from components that use it
 export const useIsAdmin = () => {
-  // Always return false since there's no global admin
-  // Group admin status should be checked per-chat
-  return false
+  const user = useAuthStore((state) => state.user)
+  return user?.role === UserRole.SUPER_ADMIN || user?.role === UserRole.ADMIN
 }

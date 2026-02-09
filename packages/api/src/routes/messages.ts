@@ -24,10 +24,15 @@ const sendMessageSchema = z.object({
   type: z.nativeEnum(MessageType).default(MessageType.TEXT),
   fileUrl: z.string().url().optional(),
   replyToId: z.string().optional(),
+  duration: z.number().int().positive().optional(),
 }).refine(
   (data) => data.content || data.fileUrl,
   { message: 'Either content or fileUrl is required' }
 )
+
+const searchMessagesSchema = z.object({
+  q: z.string().min(1).max(200),
+})
 
 const convertToTaskSchema = z.object({
   title: z.string().max(200).optional(),
@@ -42,6 +47,8 @@ const convertToTaskSchema = z.object({
   approvalRequired: z.boolean().default(true),
   isRecurring: z.boolean().default(false),
   recurringRule: z.string().optional(),
+  tags: z.array(z.string()).optional().default([]),
+  sopInstructions: z.string().optional(),
 })
 
 export const messageRoutes: FastifyPluginAsync = async (fastify) => {
@@ -79,6 +86,7 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
             phone: true,
             name: true,
             avatarUrl: true,
+            emoji: true,
           },
         },
         replyTo: {
@@ -106,6 +114,9 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
             },
           },
         },
+        _count: {
+          select: { readBy: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: limit + 1, // Take one extra to check for more
@@ -124,10 +135,12 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
         content: msg.content,
         type: msg.type,
         fileUrl: msg.fileUrl,
+        duration: msg.duration,
         replyToId: msg.replyToId,
         replyTo: msg.replyTo,
         isTask: msg.isTask,
         task: msg.task,
+        readByCount: msg._count.readBy,
         createdAt: msg.createdAt,
       })),
       meta: {
@@ -167,6 +180,7 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
         type: body.type,
         fileUrl: body.fileUrl || null,
         replyToId: body.replyToId || null,
+        duration: body.duration || null,
       },
       include: {
         sender: {
@@ -175,6 +189,7 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
             phone: true,
             name: true,
             avatarUrl: true,
+            emoji: true,
           },
         },
         replyTo: {
@@ -208,10 +223,12 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
         content: message.content,
         type: message.type,
         fileUrl: message.fileUrl,
+        duration: message.duration,
         replyToId: message.replyToId,
         replyTo: message.replyTo,
         isTask: message.isTask,
         task: null,
+        readByCount: 0,
         createdAt: message.createdAt,
       },
     })
@@ -226,12 +243,104 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
         content: message.content,
         type: message.type,
         fileUrl: message.fileUrl,
+        duration: message.duration,
         replyToId: message.replyToId,
         replyTo: message.replyTo,
         isTask: message.isTask,
         task: null,
+        readByCount: 0,
         createdAt: message.createdAt,
       },
+    }
+  })
+
+  /**
+   * GET /api/chats/:id/messages/search?q=keyword - Search messages in a chat
+   */
+  fastify.get('/chats/:id/messages/search', {
+    preHandler: [authenticate],
+  }, async (request) => {
+    const { id: chatId } = chatIdParamsSchema.parse(request.params)
+    const { q } = searchMessagesSchema.parse(request.query)
+    const userId = request.user.id
+
+    // Check if user is a member
+    const membership = await prisma.chatMember.findUnique({
+      where: {
+        chatId_userId: { chatId, userId },
+      },
+    })
+
+    if (!membership) {
+      throw new ForbiddenError('You are not a member of this chat')
+    }
+
+    const messages = await prisma.message.findMany({
+      where: {
+        chatId,
+        content: { contains: q, mode: 'insensitive' },
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            phone: true,
+            name: true,
+            avatarUrl: true,
+            emoji: true,
+          },
+        },
+        replyTo: {
+          select: {
+            id: true,
+            content: true,
+            type: true,
+            senderId: true,
+            sender: {
+              select: { name: true },
+            },
+          },
+        },
+        task: {
+          include: {
+            owner: {
+              select: {
+                id: true,
+                name: true,
+                avatarUrl: true,
+              },
+            },
+            steps: {
+              orderBy: { order: 'asc' },
+            },
+          },
+        },
+        _count: {
+          select: { readBy: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+
+    return {
+      success: true,
+      data: messages.map((msg) => ({
+        id: msg.id,
+        chatId: msg.chatId,
+        senderId: msg.senderId,
+        sender: msg.sender,
+        content: msg.content,
+        type: msg.type,
+        fileUrl: msg.fileUrl,
+        duration: msg.duration,
+        replyToId: msg.replyToId,
+        replyTo: msg.replyTo,
+        isTask: msg.isTask,
+        task: msg.task,
+        readByCount: msg._count.readBy,
+        createdAt: msg.createdAt,
+      })),
     }
   })
 
@@ -262,10 +371,16 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
       throw new NotFoundError('Message')
     }
 
-    // Check if user is a group admin (OWNER or ADMIN) for this chat
+    // Check if user has app-level ADMIN or SUPER_ADMIN role
+    const currentUser = await prisma.user.findUnique({ where: { id: userId } })
+    if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN')) {
+      throw new ForbiddenError('Only admins can convert messages to tasks')
+    }
+
+    // Also verify user is a member of this chat
     const memberRole = await getChatMemberRole(userId, message.chatId)
-    if (!memberRole || (memberRole !== ChatMemberRole.OWNER && memberRole !== ChatMemberRole.ADMIN)) {
-      throw new ForbiddenError('Only group admins can convert messages to tasks')
+    if (!memberRole) {
+      throw new ForbiddenError('You are not a member of this chat')
     }
 
     // Check if already a task
@@ -300,6 +415,8 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
           approvalRequired: body.approvalRequired,
           isRecurring: body.isRecurring,
           recurringRule: body.recurringRule || null,
+          tags: body.tags,
+          sopInstructions: body.sopInstructions || null,
           createdById: userId,
           steps: body.steps ? {
             createMany: {

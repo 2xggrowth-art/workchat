@@ -13,6 +13,7 @@ const userIdParamsSchema = z.object({
 const updateUserSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   avatarUrl: z.string().url().optional().nullable(),
+  emoji: z.string().max(10).optional().nullable(),
 })
 
 const searchSchema = z.object({
@@ -47,7 +48,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
           { name: { contains: query, mode: 'insensitive' } },
           { phone: { contains: query } },
         ],
-        isVerified: true,
+        isApproved: true,
         id: { not: currentUserId }, // Exclude self
       },
       select: {
@@ -55,6 +56,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         phone: true,
         name: true,
         avatarUrl: true,
+        emoji: true,
         createdAt: true,
       },
       take: 20,
@@ -86,6 +88,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         phone: true,
         name: true,
         avatarUrl: true,
+        emoji: true,
         createdAt: true,
       },
     })
@@ -275,7 +278,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     const users = await prisma.user.findMany({
       where: {
         phone: { in: normalizedPhones },
-        isVerified: true,
+        isApproved: true,
         id: { not: currentUserId },
       },
       select: {
@@ -283,6 +286,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         phone: true,
         name: true,
         avatarUrl: true,
+        emoji: true,
         createdAt: true,
       },
       orderBy: { name: 'asc' },
@@ -309,6 +313,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         phone: true,
         name: true,
         avatarUrl: true,
+        emoji: true,
         createdAt: true,
       },
     })
@@ -345,6 +350,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         phone: true,
         name: true,
         avatarUrl: true,
+        emoji: true,
         createdAt: true,
       },
     })

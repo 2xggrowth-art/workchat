@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, RefreshControl, TextInput } from 'react-native'
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, RefreshControl, ScrollView } from 'react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
 import { api } from '../services/api'
 import { socketService } from '../services/socket'
@@ -27,6 +27,27 @@ interface Chat {
   unreadCount?: number
 }
 
+const AVATAR_COLORS = ['#E91E63', '#9C27B0', '#3F51B5', '#009688', '#FF5722', '#795548', '#607D8B', '#2196F3']
+
+function getAvatarColor(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
+type FilterType = 'all' | 'unread' | 'groups' | 'direct'
+
 export default function ChatListScreen() {
   const navigation = useNavigation()
   const user = useAuthStore((state) => state.user)
@@ -34,41 +55,30 @@ export default function ChatListScreen() {
   const [chats, setChats] = useState<Chat[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [filter, setFilter] = useState<FilterType>('all')
 
   const fetchChats = async () => {
     try {
-      console.log('[ChatList] Fetching chats...')
       const response = await api.get('/api/chats')
-      console.log('[ChatList] Response:', JSON.stringify(response.data, null, 2))
       const chatData = response.data.data || []
-      console.log('[ChatList] Chats count:', chatData.length)
       setChats(chatData)
     } catch (error: any) {
       console.error('[ChatList] Failed to fetch chats:', error.message)
-      console.error('[ChatList] Error details:', error.response?.data)
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
   }
 
-  // Fetch on mount and listen for real-time updates
   useEffect(() => {
     fetchChats()
 
-    // Listen for new messages to update chat list
     const unsubscribeNewMessage = socketService.on('new_message', () => {
-      // Refresh chat list when any new message arrives
       fetchChats()
     })
-
-    // Listen for new chats created
     const unsubscribeChatCreated = socketService.on('chat_created', () => {
       fetchChats()
     })
-
-    // Listen for unread count updates
     const unsubscribeUnreadUpdated = socketService.on('unread_updated', (data: { chatId: string; unreadCount: number }) => {
       setChats((prev) =>
         prev.map((chat) =>
@@ -76,10 +86,7 @@ export default function ChatListScreen() {
         )
       )
     })
-
-    // Listen for messages_read events (when someone else reads messages)
     const unsubscribeMessagesRead = socketService.on('messages_read', () => {
-      // Refresh to get updated unread counts
       fetchChats()
     })
 
@@ -91,7 +98,6 @@ export default function ChatListScreen() {
     }
   }, [])
 
-  // Refetch when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       fetchChats()
@@ -110,7 +116,7 @@ export default function ChatListScreen() {
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
     if (diffDays === 0) {
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
     } else if (diffDays === 1) {
       return 'Yesterday'
     } else if (diffDays < 7) {
@@ -127,16 +133,14 @@ export default function ChatListScreen() {
     const prefix = chat.type === 'GROUP' && senderName ? `${senderName}: ` : ''
 
     switch (type) {
-      case 'TEXT':
-        return prefix + (content || '')
       case 'IMAGE':
-        return prefix + '📷 Photo'
+        return prefix + 'Photo'
       case 'VIDEO':
-        return prefix + '🎥 Video'
+        return prefix + 'Video'
       case 'AUDIO':
-        return prefix + '🎵 Audio'
+        return prefix + 'Audio'
       case 'FILE':
-        return prefix + '📄 File'
+        return prefix + 'File'
       default:
         return prefix + (content || '')
     }
@@ -144,50 +148,76 @@ export default function ChatListScreen() {
 
   const getChatDisplayName = (chat: Chat) => {
     if (chat.type === 'GROUP') return chat.name
-
-    // For direct chats, show the other person's name
     const otherMember = chat.members?.find((m) => m.user.id !== user?.id)
     return otherMember?.user.name || chat.name
   }
 
   const filteredChats = chats.filter((chat) => {
-    if (!searchQuery) return true
-    const displayName = getChatDisplayName(chat)
-    return displayName.toLowerCase().includes(searchQuery.toLowerCase())
+    switch (filter) {
+      case 'unread':
+        return (chat.unreadCount || 0) > 0
+      case 'groups':
+        return chat.type === 'GROUP'
+      case 'direct':
+        return chat.type === 'DIRECT'
+      default:
+        return true
+    }
   })
+
+  const renderFilterChip = (label: string, value: FilterType) => (
+    <TouchableOpacity
+      key={value}
+      style={[styles.filterChip, filter === value && styles.filterChipActive]}
+      onPress={() => setFilter(value)}
+    >
+      <Text style={[styles.filterChipText, filter === value && styles.filterChipTextActive]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  )
 
   const renderChat = ({ item }: { item: Chat }) => {
     const hasUnread = (item.unreadCount || 0) > 0
+    const displayName = getChatDisplayName(item)
+    const avatarColor = getAvatarColor(displayName)
 
     return (
       <TouchableOpacity
         style={styles.chatItem}
-        onPress={() => (navigation as any).navigate('Chat', { chatId: item.id, chatName: getChatDisplayName(item) })}
+        onPress={() => (navigation as any).navigate('Chat', { chatId: item.id, chatName: displayName })}
+        activeOpacity={0.7}
       >
-        <View style={[styles.avatar, item.type === 'GROUP' && styles.groupAvatar]}>
-          <Text style={styles.avatarText}>{getChatDisplayName(item).charAt(0).toUpperCase()}</Text>
+        <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
+          {item.type === 'GROUP' ? (
+            <Text style={styles.avatarText}>G</Text>
+          ) : (
+            <Text style={styles.avatarText}>{getInitials(displayName)}</Text>
+          )}
         </View>
-        <View style={styles.chatContent}>
-          <View style={styles.chatHeader}>
-            <Text style={[styles.chatName, hasUnread && styles.chatNameUnread]} numberOfLines={1}>
-              {getChatDisplayName(item)}
-            </Text>
-            <Text style={[styles.chatTime, hasUnread && styles.chatTimeUnread]}>
-              {item.lastMessage?.createdAt ? formatTime(item.lastMessage.createdAt) : (item.updatedAt ? formatTime(item.updatedAt) : '')}
-            </Text>
-          </View>
-          <View style={styles.chatFooter}>
-            <Text style={[styles.chatLastMessage, hasUnread && styles.chatLastMessageUnread]} numberOfLines={1}>
-              {getLastMessagePreview(item)}
-            </Text>
-            {hasUnread && (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadBadgeText}>
-                  {item.unreadCount! > 99 ? '99+' : item.unreadCount}
-                </Text>
-              </View>
-            )}
-          </View>
+        <View style={styles.chatInfo}>
+          <Text style={[styles.chatName, hasUnread && styles.chatNameUnread]} numberOfLines={1}>
+            {displayName}
+          </Text>
+          <Text style={[styles.chatPreview, hasUnread && styles.chatPreviewUnread]} numberOfLines={1}>
+            {getLastMessagePreview(item)}
+          </Text>
+        </View>
+        <View style={styles.chatMeta}>
+          <Text style={[styles.chatTime, hasUnread && styles.chatTimeUnread]}>
+            {item.lastMessage?.createdAt
+              ? formatTime(item.lastMessage.createdAt)
+              : item.updatedAt
+              ? formatTime(item.updatedAt)
+              : ''}
+          </Text>
+          {hasUnread && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {item.unreadCount! > 99 ? '99+' : item.unreadCount}
+              </Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     )
@@ -202,18 +232,13 @@ export default function ChatListScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Search */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInput}>
-          <TextInput
-            placeholder="Search chats..."
-            placeholderTextColor="#9CA3AF"
-            style={styles.searchTextInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-      </View>
+      {/* Filter Chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterBar} contentContainerStyle={styles.filterBarContent}>
+        {renderFilterChip('All', 'all')}
+        {renderFilterChip('Unread', 'unread')}
+        {renderFilterChip('Groups', 'groups')}
+        {renderFilterChip('Direct', 'direct')}
+      </ScrollView>
 
       {/* Chat List */}
       {loading ? (
@@ -233,7 +258,7 @@ export default function ChatListScreen() {
         />
       )}
 
-      {/* Floating Action Button - New Chat */}
+      {/* FAB */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => (navigation as any).navigate('NewChat')}
@@ -250,21 +275,33 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  searchContainer: {
-    padding: 8,
-    backgroundColor: '#FFFFFF',
+  filterBar: {
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#EEEEEE',
+    flexGrow: 0,
   },
-  searchInput: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
+  filterBarContent: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    gap: 8,
   },
-  searchTextInput: {
-    color: '#111827',
-    fontSize: 14,
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 18,
+    backgroundColor: '#EEEEEE',
+    marginRight: 8,
+  },
+  filterChipActive: {
+    backgroundColor: '#128C7E',
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#616161',
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
   },
   loadingContainer: {
     flex: 1,
@@ -272,7 +309,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   listContent: {
-    paddingBottom: 20,
+    paddingBottom: 80,
   },
   listContentEmpty: {
     flex: 1,
@@ -286,12 +323,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#111827',
+    color: '#212121',
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#9E9E9E',
     textAlign: 'center',
   },
   chatItem: {
@@ -300,100 +337,88 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#F5F5F5',
   },
   avatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#128C7E',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  groupAvatar: {
-    backgroundColor: '#25D366',
-  },
   avatarText: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '500',
     color: '#FFFFFF',
   },
-  chatContent: {
+  chatInfo: {
     flex: 1,
-  },
-  chatHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
+    minWidth: 0,
   },
   chatName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '500',
-    color: '#111827',
-    flex: 1,
-    marginRight: 8,
-  },
-  chatTime: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  chatTimeUnread: {
-    color: '#25D366',
-  },
-  chatFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  chatLastMessage: {
-    fontSize: 14,
-    color: '#6B7280',
-    flex: 1,
-  },
-  chatLastMessageUnread: {
-    color: '#111827',
-    fontWeight: '500',
+    color: '#212121',
   },
   chatNameUnread: {
     fontWeight: '700',
   },
-  unreadBadge: {
-    backgroundColor: '#25D366',
-    borderRadius: 12,
-    minWidth: 22,
-    height: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
+  chatPreview: {
+    fontSize: 14,
+    color: '#9E9E9E',
+    marginTop: 2,
+  },
+  chatPreviewUnread: {
+    color: '#424242',
+    fontWeight: '500',
+  },
+  chatMeta: {
+    alignItems: 'flex-end',
     marginLeft: 8,
   },
-  unreadBadgeText: {
-    color: '#FFFFFF',
+  chatTime: {
     fontSize: 12,
-    fontWeight: '600',
+    color: '#9E9E9E',
+  },
+  chatTimeUnread: {
+    color: '#25D366',
+    fontWeight: '500',
+  },
+  badge: {
+    backgroundColor: '#25D366',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+    marginTop: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   fab: {
     position: 'absolute',
-    bottom: 20,
-    right: 20,
+    bottom: 16,
+    right: 16,
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 16,
     backgroundColor: '#25D366',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowRadius: 12,
     elevation: 5,
   },
   fabIcon: {
-    fontSize: 32,
+    fontSize: 28,
     color: '#FFFFFF',
     fontWeight: '300',
-    marginTop: -2,
   },
 })

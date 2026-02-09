@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ export default function NewChatScreen() {
   const insets = useSafeAreaInsets()
 
   const [searchQuery, setSearchQuery] = useState('')
+  const searchTimeout = useRef<NodeJS.Timeout>()
   const [searchResults, setSearchResults] = useState<User[]>([])
   const [loading, setLoading] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -176,10 +177,14 @@ export default function NewChatScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backText}>←</Text>
+          <Text style={styles.backText}>{'<'}</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Chat</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerInfo}>
+          <Text style={styles.headerTitle}>Select Contact</Text>
+          {searchResults.length > 0 && (
+            <Text style={styles.headerSubtitle}>{searchResults.length} contacts</Text>
+          )}
+        </View>
       </View>
 
       {/* New Group Option */}
@@ -208,7 +213,8 @@ export default function NewChatScreen() {
             value={searchQuery}
             onChangeText={(text) => {
               setSearchQuery(text)
-              searchUsers(text)
+              clearTimeout(searchTimeout.current)
+              searchTimeout.current = setTimeout(() => searchUsers(text), 300)
             }}
             autoCapitalize="none"
             autoCorrect={false}
@@ -269,35 +275,43 @@ const styles = StyleSheet.create({
     backgroundColor: '#128C7E',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 8,
     paddingBottom: 12,
   },
   backButton: {
     padding: 8,
-    width: 40,
   },
   backText: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 22,
+    fontWeight: '500',
+  },
+  headerInfo: {
+    flex: 1,
+    paddingLeft: 8,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '500',
     color: '#FFFFFF',
   },
+  headerSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+  },
   searchContainer: {
-    padding: 12,
+    padding: 8,
+    paddingHorizontal: 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#EEEEEE',
   },
   searchInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 24,
-    paddingHorizontal: 16,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 20,
+    paddingHorizontal: 14,
   },
   searchIcon: {
     fontSize: 16,

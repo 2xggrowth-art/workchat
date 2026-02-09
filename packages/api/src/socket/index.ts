@@ -67,7 +67,16 @@ export function setupSocketHandlers(io: SocketServer, fastify: FastifyInstance) 
     })
 
     // Handle typing indicator
-    socket.on('typing', ({ chatId, isTyping }: { chatId: string; isTyping: boolean }) => {
+    socket.on('typing', async ({ chatId, isTyping }: { chatId: string; isTyping: boolean }) => {
+      // Verify user is a member of the chat before broadcasting
+      const membership = await prisma.chatMember.findUnique({
+        where: {
+          chatId_userId: { chatId, userId: user.id },
+        },
+      })
+
+      if (!membership) return
+
       socket.to(`chat:${chatId}`).emit('user_typing', {
         chatId,
         userId: user.id,
@@ -83,12 +92,14 @@ export function setupSocketHandlers(io: SocketServer, fastify: FastifyInstance) 
       type = 'TEXT',
       fileUrl,
       replyToId,
+      duration,
     }: {
       chatId: string
       content?: string
       type?: string
       fileUrl?: string
       replyToId?: string
+      duration?: number
     }) => {
       try {
         // Verify user is a member
@@ -112,6 +123,7 @@ export function setupSocketHandlers(io: SocketServer, fastify: FastifyInstance) 
             type: type as any,
             fileUrl: fileUrl || null,
             replyToId: replyToId || null,
+            duration: duration || null,
           },
           include: {
             sender: {
@@ -120,6 +132,7 @@ export function setupSocketHandlers(io: SocketServer, fastify: FastifyInstance) 
                 phone: true,
                 name: true,
                 avatarUrl: true,
+                emoji: true,
               },
             },
             replyTo: {
@@ -151,10 +164,12 @@ export function setupSocketHandlers(io: SocketServer, fastify: FastifyInstance) 
             content: message.content,
             type: message.type,
             fileUrl: message.fileUrl,
+            duration: message.duration,
             replyToId: message.replyToId,
             replyTo: message.replyTo,
             isTask: message.isTask,
             task: null,
+            readByCount: 0,
             createdAt: message.createdAt,
           },
         })
@@ -223,9 +238,11 @@ export function setupSocketHandlers(io: SocketServer, fastify: FastifyInstance) 
           })
 
           // Emit event to update other users (and chat list unread count)
+          const readUpToMessageId = unreadMessages[unreadMessages.length - 1]?.id
           socket.to(`chat:${chatId}`).emit('messages_read', {
             chatId,
             userId: user.id,
+            readUpToMessageId,
             count: unreadMessages.length,
             readAt: new Date().toISOString(),
           })

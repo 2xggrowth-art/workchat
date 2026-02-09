@@ -3,27 +3,32 @@ import { Routes, Route } from 'react-router-dom'
 import Sidebar from '../components/layout/Sidebar'
 import ChatPanel from '../components/chat/ChatPanel'
 import EmptyChat from '../components/chat/EmptyChat'
-import TasksPanel from '../components/tasks/TasksPanel'
+import AdminSummaryPanel from '../components/admin/AdminSummaryPanel'
+import UserApprovalPanel from '../components/admin/UserApprovalPanel'
 
-export type ActiveTab = 'chats' | 'tasks'
+export type ActiveView = 'chats' | 'admin-summary' | 'user-approval'
 
 export default function MainLayout() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('chats')
+  const [activeView, setActiveView] = useState<ActiveView>('chats')
 
   return (
-    <div className="h-screen flex">
+    <div className="h-screen flex bg-white dark:bg-[#111B21]">
       {/* Left Sidebar */}
-      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <Sidebar activeView={activeView} onViewChange={setActiveView} />
 
-      {/* Right Panel - Chat/Tasks area */}
-      <div className="flex-1 flex flex-col bg-[#222E35]">
-        {activeTab === 'chats' ? (
+      {/* Right Panel */}
+      <div className="flex-1 flex flex-col relative bg-[#ECE5DD] dark:bg-[#0B141A]">
+        {activeView === 'admin-summary' && (
+          <AdminSummaryPanel onClose={() => setActiveView('chats')} />
+        )}
+        {activeView === 'user-approval' && (
+          <UserApprovalPanel onClose={() => setActiveView('chats')} />
+        )}
+        {activeView === 'chats' && (
           <Routes>
             <Route path="/" element={<EmptyChat />} />
             <Route path="/chat/:chatId" element={<ChatPanel />} />
           </Routes>
-        ) : (
-          <TasksPanel />
         )}
       </div>
     </div>

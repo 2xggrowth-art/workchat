@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -65,6 +65,13 @@ export default function ConvertToTaskModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showOwnerPicker, setShowOwnerPicker] = useState(false)
+  // Recurring
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [recurringRule, setRecurringRule] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
+  // Tags & SOP
+  const [tags, setTags] = useState<string[]>([])
+  const [newTag, setNewTag] = useState('')
+  const [sopInstructions, setSopInstructions] = useState('')
 
   // Reset form when modal opens with new message
   const resetForm = () => {
@@ -76,14 +83,19 @@ export default function ConvertToTaskModal({
     setSteps([])
     setNewStep('')
     setError('')
+    setIsRecurring(false)
+    setRecurringRule('DAILY')
+    setTags([])
+    setNewTag('')
+    setSopInstructions('')
   }
 
   // Reset on open
-  useState(() => {
+  useEffect(() => {
     if (visible && message) {
       resetForm()
     }
-  })
+  }, [visible, message?.id])
 
   const selectedOwner = members.find((m) => m.userId === ownerId)
 
@@ -135,6 +147,10 @@ export default function ConvertToTaskModal({
         priority,
         approvalRequired,
         steps: steps.length > 0 ? steps : undefined,
+        isRecurring,
+        recurringRule: isRecurring ? recurringRule : undefined,
+        tags: tags.length > 0 ? tags : undefined,
+        sopInstructions: sopInstructions.trim() || undefined,
       })
 
       onSuccess()
@@ -381,6 +397,83 @@ export default function ConvertToTaskModal({
               </View>
             </View>
 
+            {/* Recurring */}
+            <View style={styles.section}>
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>Recurring Task</Text>
+                <Switch
+                  value={isRecurring}
+                  onValueChange={setIsRecurring}
+                  trackColor={{ false: '#3B4A54', true: '#128C7E' }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+              {isRecurring && (
+                <View style={[styles.priorityRow, { marginTop: 8 }]}>
+                  {(['DAILY', 'WEEKLY', 'MONTHLY'] as const).map((rule) => (
+                    <TouchableOpacity
+                      key={rule}
+                      style={[styles.priorityButton, recurringRule === rule && styles.priorityButtonSelected]}
+                      onPress={() => setRecurringRule(rule)}
+                    >
+                      <Text style={[styles.priorityText, recurringRule === rule && styles.priorityTextSelected]}>
+                        {rule}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Tags */}
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Tags (optional)</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: tags.length > 0 ? 8 : 0 }}>
+                {tags.map((tag, i) => (
+                  <TouchableOpacity key={i} onPress={() => setTags(tags.filter((_, idx) => idx !== i))} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F5E9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                    <Text style={{ fontSize: 13, color: '#2E7D32' }}>{tag}</Text>
+                    <Text style={{ fontSize: 12, color: '#9E9E9E', marginLeft: 6 }}>x</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.addStepRow}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={newTag}
+                  onChangeText={setNewTag}
+                  placeholder="Add a tag..."
+                  placeholderTextColor="#9CA3AF"
+                  onSubmitEditing={() => {
+                    if (newTag.trim()) {
+                      setTags([...tags, newTag.trim()])
+                      setNewTag('')
+                    }
+                  }}
+                />
+                <TouchableOpacity style={styles.addStepButton} onPress={() => {
+                  if (newTag.trim()) {
+                    setTags([...tags, newTag.trim()])
+                    setNewTag('')
+                  }
+                }}>
+                  <Text style={styles.addStepText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* SOP Instructions */}
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>SOP Instructions (optional)</Text>
+              <TextInput
+                style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+                value={sopInstructions}
+                onChangeText={setSopInstructions}
+                placeholder="Enter standard operating procedure..."
+                placeholderTextColor="#9CA3AF"
+                multiline
+              />
+            </View>
+
             {/* Error */}
             {error ? (
               <View style={styles.errorContainer}>
@@ -406,7 +499,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '90%',
+    maxHeight: '85%',
   },
   header: {
     flexDirection: 'row',
@@ -415,7 +508,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#EEEEEE',
   },
   closeButton: {
     padding: 4,
@@ -450,15 +543,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
-    color: '#6B7280',
-    marginBottom: 8,
+    color: '#757575',
+    marginBottom: 6,
   },
   messagePreview: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F5F5F5',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     borderLeftWidth: 3,
     borderLeftColor: '#128C7E',
   },
@@ -467,18 +560,22 @@ const styles = StyleSheet.create({
     color: '#374151',
   },
   input: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 10,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 16,
-    color: '#111827',
+    fontSize: 15,
+    color: '#212121',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
   pickerButton: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 10,
+    paddingHorizontal: 14,
     paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',

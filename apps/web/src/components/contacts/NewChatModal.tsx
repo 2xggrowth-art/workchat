@@ -176,26 +176,26 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative w-full max-w-md bg-[#111B21] rounded-lg shadow-xl overflow-hidden">
+      <div className="relative w-full max-w-md bg-white dark:bg-[#111B21] rounded-lg shadow-xl overflow-hidden">
         {/* Header */}
-        <div className="bg-[#202C33] px-4 py-4 flex items-center gap-4">
+        <div className="bg-[#075E54] dark:bg-[#202C33] px-4 py-4 flex items-center gap-4">
           <button
             onClick={onClose}
-            className="text-[#AEBAC1] hover:text-white transition-colors"
+            className="text-white/80 hover:text-white transition-colors"
           >
             <CloseIcon />
           </button>
-          <h2 className="text-[#E9EDEF] text-lg font-medium">New chat</h2>
+          <h2 className="text-white text-lg font-medium">New chat</h2>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-[#222D34]">
+        <div className="flex border-b border-gray-200 dark:border-[#222D34]">
           <button
             onClick={() => setActiveTab('search')}
             className={`flex-1 py-3 text-sm font-medium transition-colors ${
               activeTab === 'search'
-                ? 'text-[#00A884] border-b-2 border-[#00A884]'
-                : 'text-[#8696A0] hover:text-[#E9EDEF]'
+                ? 'text-[#075E54] dark:text-[#00A884] border-b-2 border-[#075E54] dark:border-[#00A884]'
+                : 'text-gray-500 dark:text-[#8696A0] hover:text-gray-700 dark:hover:text-[#E9EDEF]'
             }`}
           >
             <div className="flex items-center justify-center gap-2">
@@ -207,8 +207,8 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
             onClick={() => setActiveTab('group')}
             className={`flex-1 py-3 text-sm font-medium transition-colors ${
               activeTab === 'group'
-                ? 'text-[#00A884] border-b-2 border-[#00A884]'
-                : 'text-[#8696A0] hover:text-[#E9EDEF]'
+                ? 'text-[#075E54] dark:text-[#00A884] border-b-2 border-[#075E54] dark:border-[#00A884]'
+                : 'text-gray-500 dark:text-[#8696A0] hover:text-gray-700 dark:hover:text-[#E9EDEF]'
             }`}
           >
             <div className="flex items-center justify-center gap-2">
@@ -221,19 +221,19 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
         {activeTab === 'search' ? (
           <>
             {/* Search input */}
-            <div className="p-4 bg-[#111B21]">
-              <div className="flex items-center gap-3 bg-[#202C33] rounded-lg px-4 py-2">
+            <div className="p-4 bg-white dark:bg-[#111B21]">
+              <div className="flex items-center gap-3 bg-[#f0f2f5] dark:bg-[#202C33] rounded-lg px-4 py-2">
                 <SearchIcon />
                 <input
                   type="text"
                   placeholder="Search name or phone number"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="flex-1 bg-transparent text-[#E9EDEF] placeholder-[#8696A0] outline-none text-sm"
+                  className="flex-1 bg-transparent text-gray-900 dark:text-[#E9EDEF] placeholder-gray-400 dark:placeholder-[#8696A0] outline-none text-sm"
                   autoFocus
                 />
               </div>
-              <p className="text-[#8696A0] text-xs mt-2 px-1">
+              <p className="text-gray-400 dark:text-[#8696A0] text-xs mt-2 px-1">
                 Enter phone number with country code (e.g., +1234567890)
               </p>
             </div>
@@ -242,10 +242,10 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
             <div className="max-h-[400px] overflow-y-auto">
               {(isSearching || isPhoneSearching) && searchQuery.length >= 2 ? (
                 <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin w-8 h-8 border-2 border-[#00A884] border-t-transparent rounded-full" />
+                  <div className="animate-spin w-8 h-8 border-2 border-[#128C7E] dark:border-[#00A884] border-t-transparent rounded-full" />
                 </div>
               ) : users.length === 0 && searchQuery.length >= 2 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-[#8696A0] px-8 text-center">
+                <div className="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-[#8696A0] px-8 text-center">
                   <PersonIcon />
                   <p className="text-sm mt-3">No users found</p>
                   <p className="text-xs mt-1 opacity-75">
@@ -253,7 +253,7 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
                   </p>
                 </div>
               ) : searchQuery.length < 2 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-[#8696A0] px-8 text-center">
+                <div className="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-[#8696A0] px-8 text-center">
                   <SearchIcon />
                   <p className="text-sm mt-3">Search for contacts</p>
                   <p className="text-xs mt-1 opacity-75">
@@ -276,36 +276,36 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
           /* Group creation */
           <div className="flex flex-col">
             {/* Group name input */}
-            <div className="p-4 bg-[#111B21] border-b border-[#222D34]">
+            <div className="p-4 bg-white dark:bg-[#111B21] border-b border-gray-200 dark:border-[#222D34]">
               <input
                 type="text"
                 placeholder="Group name"
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
-                className="w-full bg-[#202C33] text-[#E9EDEF] placeholder-[#8696A0] rounded-lg px-4 py-2.5 outline-none text-sm focus:ring-1 focus:ring-[#00A884]"
+                className="w-full bg-[#f0f2f5] dark:bg-[#202C33] text-gray-900 dark:text-[#E9EDEF] placeholder-gray-400 dark:placeholder-[#8696A0] rounded-lg px-4 py-2.5 outline-none text-sm focus:ring-1 focus:ring-[#128C7E] dark:focus:ring-[#00A884]"
                 autoFocus
               />
             </div>
 
             {/* Selected members */}
             {selectedMembers.length > 0 && (
-              <div className="p-3 bg-[#111B21] border-b border-[#222D34]">
-                <p className="text-xs text-[#8696A0] mb-2">
+              <div className="p-3 bg-white dark:bg-[#111B21] border-b border-gray-200 dark:border-[#222D34]">
+                <p className="text-xs text-gray-400 dark:text-[#8696A0] mb-2">
                   {selectedMembers.length} member{selectedMembers.length > 1 ? 's' : ''} selected
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {selectedMembers.map((member) => (
                     <div
                       key={member.id}
-                      className="flex items-center gap-2 bg-[#202C33] rounded-full px-3 py-1.5"
+                      className="flex items-center gap-2 bg-[#f0f2f5] dark:bg-[#202C33] rounded-full px-3 py-1.5"
                     >
                       <div className="w-6 h-6 rounded-full bg-[#6B7C85] flex items-center justify-center text-white text-xs">
                         {member.name.charAt(0).toUpperCase()}
                       </div>
-                      <span className="text-sm text-[#E9EDEF]">{member.name}</span>
+                      <span className="text-sm text-gray-900 dark:text-[#E9EDEF]">{member.name}</span>
                       <button
                         onClick={() => handleRemoveMember(member.id)}
-                        className="text-[#8696A0] hover:text-white"
+                        className="text-gray-400 dark:text-[#8696A0] hover:text-gray-600 dark:hover:text-white"
                       >
                         <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                           <path d="M19.1 17.2l-5.3-5.3 5.3-5.3-1.8-1.8-5.3 5.4-5.3-5.3-1.8 1.7 5.3 5.3-5.3 5.3L6.7 19l5.3-5.3 5.3 5.3 1.8-1.8z"/>
@@ -318,15 +318,15 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
             )}
 
             {/* Search members */}
-            <div className="p-4 bg-[#111B21]">
-              <div className="flex items-center gap-3 bg-[#202C33] rounded-lg px-4 py-2">
+            <div className="p-4 bg-white dark:bg-[#111B21]">
+              <div className="flex items-center gap-3 bg-[#f0f2f5] dark:bg-[#202C33] rounded-lg px-4 py-2">
                 <SearchIcon />
                 <input
                   type="text"
                   placeholder="Add members..."
                   value={groupSearchQuery}
                   onChange={(e) => setGroupSearchQuery(e.target.value)}
-                  className="flex-1 bg-transparent text-[#E9EDEF] placeholder-[#8696A0] outline-none text-sm"
+                  className="flex-1 bg-transparent text-gray-900 dark:text-[#E9EDEF] placeholder-gray-400 dark:placeholder-[#8696A0] outline-none text-sm"
                 />
               </div>
             </div>
@@ -335,14 +335,14 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
             <div className="max-h-[250px] overflow-y-auto">
               {isGroupSearching ? (
                 <div className="flex items-center justify-center py-6">
-                  <div className="animate-spin w-6 h-6 border-2 border-[#00A884] border-t-transparent rounded-full" />
+                  <div className="animate-spin w-6 h-6 border-2 border-[#128C7E] dark:border-[#00A884] border-t-transparent rounded-full" />
                 </div>
               ) : groupSearchQuery.length >= 2 && availableGroupUsers.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-[#8696A0] px-8 text-center">
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-[#8696A0] px-8 text-center">
                   <p className="text-sm">No users found</p>
                 </div>
               ) : groupSearchQuery.length < 2 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-[#8696A0] px-8 text-center">
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-[#8696A0] px-8 text-center">
                   <p className="text-sm">Search to add members</p>
                 </div>
               ) : (
@@ -350,16 +350,16 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
                   <button
                     key={user.id}
                     onClick={() => handleAddMember(user)}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#202C33] transition-colors text-left"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f0f2f5] dark:hover:bg-[#202C33] transition-colors text-left"
                   >
                     <div className="w-10 h-10 rounded-full bg-[#6B7C85] flex items-center justify-center text-white font-medium">
                       {user.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-[#E9EDEF] text-sm truncate">{user.name}</h3>
-                      <p className="text-xs text-[#8696A0] truncate">{user.phone}</p>
+                      <h3 className="font-medium text-gray-900 dark:text-[#E9EDEF] text-sm truncate">{user.name}</h3>
+                      <p className="text-xs text-gray-400 dark:text-[#8696A0] truncate">{user.phone}</p>
                     </div>
-                    <div className="text-[#00A884]">
+                    <div className="text-[#128C7E] dark:text-[#00A884]">
                       <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
                         <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
                       </svg>
@@ -370,11 +370,11 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
             </div>
 
             {/* Create button */}
-            <div className="p-4 bg-[#111B21] border-t border-[#222D34]">
+            <div className="p-4 bg-white dark:bg-[#111B21] border-t border-gray-200 dark:border-[#222D34]">
               <button
                 onClick={handleCreateGroup}
                 disabled={!groupName.trim() || selectedMembers.length === 0 || createGroupMutation.isPending}
-                className="w-full bg-[#00A884] text-white font-medium py-2.5 rounded-lg hover:bg-[#00957A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-[#25D366] text-white font-semibold py-2.5 rounded-lg hover:bg-[#1da851] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {createGroupMutation.isPending ? (
                   <>
@@ -389,7 +389,7 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
                 )}
               </button>
               {selectedMembers.length === 0 && (
-                <p className="text-xs text-[#8696A0] text-center mt-2">
+                <p className="text-xs text-gray-400 dark:text-[#8696A0] text-center mt-2">
                   Add at least one member to create a group
                 </p>
               )}
@@ -412,7 +412,7 @@ function UserListItem({ user, onClick, isLoading }: UserListItemProps) {
     <button
       onClick={onClick}
       disabled={isLoading}
-      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#202C33] transition-colors text-left disabled:opacity-50"
+      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#f0f2f5] dark:hover:bg-[#202C33] transition-colors text-left disabled:opacity-50"
     >
       {/* Avatar */}
       <div className="w-12 h-12 rounded-full bg-[#6B7C85] flex items-center justify-center text-white font-medium text-lg flex-shrink-0">
@@ -429,12 +429,12 @@ function UserListItem({ user, onClick, isLoading }: UserListItemProps) {
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <h3 className="font-medium text-[#E9EDEF] truncate">{user.name}</h3>
-        <p className="text-sm text-[#8696A0] truncate">{user.phone}</p>
+        <h3 className="font-medium text-gray-900 dark:text-[#E9EDEF] truncate">{user.name}</h3>
+        <p className="text-sm text-gray-400 dark:text-[#8696A0] truncate">{user.phone}</p>
       </div>
 
       {/* Chat indicator */}
-      <div className="text-[#00A884]">
+      <div className="text-[#128C7E] dark:text-[#00A884]">
         <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
           <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
         </svg>

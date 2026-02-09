@@ -86,13 +86,6 @@ export const GROUP_PERMISSIONS: Record<ChatMemberRole, GroupPermission[]> = {
 }
 
 // ============================================
-// OTP CONSTANTS
-// ============================================
-
-export const OTP_LENGTH = 6
-export const OTP_EXPIRY_MINUTES = 5
-
-// ============================================
 // APP CONSTANTS
 // ============================================
 

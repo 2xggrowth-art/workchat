@@ -2,12 +2,19 @@
 // USER TYPES
 // ============================================
 
+export enum UserRole {
+  SUPER_ADMIN = 'SUPER_ADMIN',
+  ADMIN = 'ADMIN',
+  STAFF = 'STAFF',
+}
+
 export interface User {
   id: string
   phone: string
   name: string
   avatarUrl: string | null
-  isVerified: boolean
+  role: UserRole
+  isApproved: boolean
   createdAt: Date
 }
 
@@ -199,28 +206,22 @@ export interface TaskActivity {
 // API REQUEST/RESPONSE TYPES
 // ============================================
 
-// OTP Authentication
-export interface RequestOtpRequest {
+// PIN Authentication
+export interface RegisterRequest {
   phone: string
+  name: string
+  pin: string
 }
 
-export interface RequestOtpResponse {
-  success: boolean
-  message: string
-  expiresIn: number // seconds until OTP expires
-}
-
-export interface VerifyOtpRequest {
+export interface LoginRequest {
   phone: string
-  otp: string
-  name?: string // Required for new users
+  pin: string
 }
 
 export interface AuthResponse {
   user: User
   accessToken: string
   refreshToken: string
-  isNewUser: boolean
 }
 
 export interface CreateChatRequest {

@@ -14,6 +14,13 @@ datasource db {
 // ENUMS
 // ============================================
 
+// User roles (app-level)
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
 // Group member roles (WhatsApp-style)
 enum ChatMemberRole {
   OWNER  // Group creator - full control
@@ -58,11 +65,12 @@ model User {
   phone        String    @unique
   name         String
   avatarUrl    String?   @map("avatar_url")
+  emoji        String?
 
-  // OTP authentication
-  otpCode      String?   @map("otp_code")
-  otpExpiresAt DateTime? @map("otp_expires_at")
-  isVerified   Boolean   @default(false) @map("is_verified")
+  // Password authentication
+  password     String
+  role         UserRole  @default(STAFF)
+  isApproved   Boolean   @default(false) @map("is_approved")
 
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
@@ -130,6 +138,7 @@ model Message {
   type      MessageType @default(TEXT)
   fileUrl   String?     @map("file_url")
   replyToId String?     @map("reply_to_id")
+  duration  Int?
   isTask    Boolean     @default(false) @map("is_task")
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
@@ -180,6 +189,8 @@ model Task {
   dueDate          DateTime?    @map("due_date")
   isRecurring      Boolean      @default(false) @map("is_recurring")
   recurringRule    String?      @map("recurring_rule")
+  tags             String[]
+  sopInstructions  String?      @map("sop_instructions")
   approvalRequired Boolean      @default(true) @map("approval_required")
   createdById      String       @map("created_by_id")
   createdAt        DateTime     @default(now()) @map("created_at")

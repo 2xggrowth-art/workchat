@@ -8,7 +8,8 @@ interface User {
   phone: string
   name: string
   avatarUrl: string | null
-  isVerified: boolean
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'STAFF'
+  isApproved: boolean
   createdAt: string
 }
 
@@ -19,17 +20,12 @@ interface AuthState {
   isLoading: boolean
   isInitialized: boolean
 
-  // OTP state
-  otpPhone: string | null
-  otpExpiresIn: number | null
-
   // Actions
   initialize: () => Promise<void>
-  requestOtp: (phone: string) => Promise<{ devMode?: boolean }>
-  verifyOtp: (phone: string, otp: string, name?: string) => Promise<{ isNewUser: boolean }>
+  login: (phone: string, pin: string) => Promise<void>
+  register: (phone: string, pin: string, name: string) => Promise<{ message: string }>
   logout: () => Promise<void>
   setUser: (user: User) => void
-  clearOtpState: () => void
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -38,9 +34,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   refreshToken: null,
   isLoading: false,
   isInitialized: false,
-
-  otpPhone: null,
-  otpExpiresIn: null,
 
   initialize: async () => {
     try {
@@ -61,16 +54,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isInitialized: true,
       })
 
-      // If we have a token, verify it's still valid
       if (storedToken) {
         try {
           const response = await api.get('/api/auth/me')
           set({ user: response.data.data })
           await AsyncStorage.setItem('workchat-user', JSON.stringify(response.data.data))
-          // Connect socket after successful auth
           socketService.connect()
         } catch (error: any) {
-          // If 401 and we have a refresh token, try to refresh
           if (error.response?.status === 401 && storedRefreshToken) {
             try {
               const refreshResponse = await api.post('/api/auth/refresh', {
@@ -78,7 +68,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               })
               const { accessToken, refreshToken: newRefreshToken } = refreshResponse.data.data
 
-              // Store new tokens
               await AsyncStorage.setItem('workchat-token', accessToken)
               await AsyncStorage.setItem('workchat-refresh-token', newRefreshToken)
 
@@ -87,20 +76,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 refreshToken: newRefreshToken,
               })
 
-              // Now fetch user with new token
               const userResponse = await api.get('/api/auth/me', {
                 headers: { Authorization: `Bearer ${accessToken}` },
               })
               set({ user: userResponse.data.data })
               await AsyncStorage.setItem('workchat-user', JSON.stringify(userResponse.data.data))
+              socketService.connect()
             } catch (refreshError) {
-              // Refresh failed - clear auth state
               console.log('Token refresh failed, clearing auth state')
               await AsyncStorage.multiRemove(['workchat-token', 'workchat-refresh-token', 'workchat-user'])
               set({ token: null, refreshToken: null, user: null })
             }
           } else {
-            // Other error or no refresh token - clear auth state
             await AsyncStorage.multiRemove(['workchat-token', 'workchat-refresh-token', 'workchat-user'])
             set({ token: null, refreshToken: null, user: null })
           }
@@ -112,32 +99,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  requestOtp: async (phone: string) => {
+  login: async (phone: string, pin: string) => {
     set({ isLoading: true })
     try {
-      const response = await api.post('/api/auth/request-otp', { phone })
-      const { expiresIn, devMode } = response.data.data
+      const response = await api.post('/api/auth/login', { phone, pin })
+      const { user, accessToken, refreshToken } = response.data.data
 
-      set({
-        otpPhone: phone,
-        otpExpiresIn: expiresIn,
-        isLoading: false,
-      })
-
-      return { devMode }
-    } catch (error) {
-      set({ isLoading: false })
-      throw error
-    }
-  },
-
-  verifyOtp: async (phone: string, otp: string, name?: string) => {
-    set({ isLoading: true })
-    try {
-      const response = await api.post('/api/auth/verify-otp', { phone, otp, name })
-      const { user, accessToken, refreshToken, isNewUser } = response.data.data
-
-      // Store tokens and user
       await AsyncStorage.setItem('workchat-token', accessToken)
       await AsyncStorage.setItem('workchat-refresh-token', refreshToken)
       await AsyncStorage.setItem('workchat-user', JSON.stringify(user))
@@ -146,15 +113,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         user,
         token: accessToken,
         refreshToken,
-        otpPhone: null,
-        otpExpiresIn: null,
         isLoading: false,
       })
 
-      // Connect socket after login
       socketService.connect()
+    } catch (error) {
+      set({ isLoading: false })
+      throw error
+    }
+  },
 
-      return { isNewUser }
+  register: async (phone: string, pin: string, name: string) => {
+    set({ isLoading: true })
+    try {
+      const response = await api.post('/api/auth/register', { phone, pin, name })
+      set({ isLoading: false })
+      return response.data.data
     } catch (error) {
       set({ isLoading: false })
       throw error
@@ -162,13 +136,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
-    // Disconnect socket before logout
     socketService.disconnect()
 
     try {
       await api.post('/api/auth/logout')
     } catch (error) {
-      // Ignore errors - we're logging out anyway
+      // Ignore errors
     }
 
     await AsyncStorage.multiRemove(['workchat-token', 'workchat-refresh-token', 'workchat-user'])
@@ -177,20 +150,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       user: null,
       token: null,
       refreshToken: null,
-      otpPhone: null,
-      otpExpiresIn: null,
     })
   },
 
   setUser: (user: User) => {
     set({ user })
     AsyncStorage.setItem('workchat-user', JSON.stringify(user))
-  },
-
-  clearOtpState: () => {
-    set({
-      otpPhone: null,
-      otpExpiresIn: null,
-    })
   },
 }))

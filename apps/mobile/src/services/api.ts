@@ -4,7 +4,7 @@ import Constants from 'expo-constants'
 
 const API_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:3000'
 
-console.log('[API] Base URL:', API_URL)
+if (__DEV__) console.log('[API] Base URL:', API_URL)
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -13,27 +13,6 @@ export const api = axios.create({
     'Content-Type': 'application/json',
   },
 })
-
-// Debug interceptor - log all requests
-api.interceptors.request.use(
-  (config) => {
-    console.log('[API] Request:', config.method?.toUpperCase(), config.url)
-    return config
-  }
-)
-
-// Debug interceptor - log all responses and errors
-api.interceptors.response.use(
-  (response) => {
-    console.log('[API] Response:', response.status, response.config.url)
-    return response
-  },
-  (error) => {
-    console.log('[API] Error:', error.message, error.config?.url)
-    console.log('[API] Error details:', error.response?.status, error.response?.data)
-    return Promise.reject(error)
-  }
-)
 
 // Request interceptor - add auth token
 api.interceptors.request.use(
@@ -49,10 +28,17 @@ api.interceptors.request.use(
   }
 )
 
-// Response interceptor - handle token refresh
+// Response interceptor - handle token refresh and log errors in dev
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (__DEV__) console.log('[API] Response:', response.status, response.config.url)
+    return response
+  },
   async (error) => {
+    if (__DEV__) {
+      console.log('[API] Error:', error.message, error.config?.url)
+      console.log('[API] Error details:', error.response?.status, error.response?.data)
+    }
     const originalRequest = error.config
 
     // If 401 and not already retrying, try to refresh token

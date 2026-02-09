@@ -11,44 +11,60 @@ import LoginScreen from './src/screens/LoginScreen'
 import ChatListScreen from './src/screens/ChatListScreen'
 import ChatScreen from './src/screens/ChatScreen'
 import TasksScreen from './src/screens/TasksScreen'
-import UpdatesScreen from './src/screens/UpdatesScreen'
+import ProfileScreen from './src/screens/ProfileScreen'
 import NewChatScreen from './src/screens/NewChatScreen'
 import NewGroupScreen from './src/screens/NewGroupScreen'
+import AdminSummaryScreen from './src/screens/AdminSummaryScreen'
 import Header from './src/components/ui/Header'
 import { useAuthStore } from './src/stores/authStore'
 import { useChatStore } from './src/stores/chatStore'
 import { notificationService } from './src/services/notifications'
 import { socketService } from './src/services/socket'
+import { ThemeProvider, useTheme } from './src/contexts/ThemeContext'
 
 const Stack = createNativeStackNavigator()
 const Tab = createBottomTabNavigator()
 const queryClient = new QueryClient()
 
-// Tab icon components
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Chats: '💬',
-    Tasks: '📋',
-    Updates: '🔔',
+  const { colors } = useTheme()
+  const labels: Record<string, string> = {
+    Chats: 'C',
+    Tasks: 'T',
+    Profile: 'P',
   }
   return (
-    <Text style={{ fontSize: focused ? 26 : 24, opacity: focused ? 1 : 0.7 }}>
-      {icons[name]}
-    </Text>
+    <View
+      style={{
+        width: 24,
+        height: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 18,
+          fontWeight: focused ? '700' : '400',
+          color: focused ? colors.primary : colors.textMuted,
+        }}
+      >
+        {labels[name]}
+      </Text>
+    </View>
   )
 }
 
-// Screen wrapper with Header
-function ScreenWithHeader({ children }: { children: React.ReactNode }) {
+function ScreenWithHeader({ children, title }: { children: React.ReactNode; title?: string }) {
+  const { colors } = useTheme()
   return (
-    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <Header />
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Header title={title} />
       {children}
     </View>
   )
 }
 
-// Wrapped screens for tabs
 function ChatsTab() {
   return (
     <ScreenWithHeader>
@@ -59,46 +75,44 @@ function ChatsTab() {
 
 function TasksTab() {
   return (
-    <ScreenWithHeader>
+    <ScreenWithHeader title="Tasks">
       <TasksScreen />
     </ScreenWithHeader>
   )
 }
 
-function UpdatesTab() {
-  return (
-    <ScreenWithHeader>
-      <UpdatesScreen />
-    </ScreenWithHeader>
-  )
+function ProfileTab() {
+  return <ProfileScreen />
 }
 
-// Bottom Tab Navigator
 function MainTabs() {
+  const { colors } = useTheme()
   return (
     <Tab.Navigator
       screenOptions={({ route }: { route: { name: string } }) => ({
         headerShown: false,
-        tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon name={route.name} focused={focused} />,
-        tabBarActiveTintColor: '#128C7E',
-        tabBarInactiveTintColor: '#6B7280',
+        tabBarIcon: ({ focused }: { focused: boolean }) => (
+          <TabIcon name={route.name} focused={focused} />
+        ),
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
+          backgroundColor: colors.surface,
           borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          borderTopColor: colors.border,
+          height: 56,
+          paddingBottom: 4,
+          paddingTop: 4,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '500',
         },
       })}
     >
       <Tab.Screen name="Chats" component={ChatsTab} />
       <Tab.Screen name="Tasks" component={TasksTab} />
-      <Tab.Screen name="Updates" component={UpdatesTab} />
+      <Tab.Screen name="Profile" component={ProfileTab} />
     </Tab.Navigator>
   )
 }
@@ -110,22 +124,17 @@ function RootNavigator() {
 
   useEffect(() => {
     initialize()
-
-    // Initialize notifications
     notificationService.initialize()
 
-    // Listen for notification taps to navigate to chat
     const responseSubscription = notificationService.addNotificationResponseListener(
       (response) => {
         const data = response.notification.request.content.data
         if (data?.chatId) {
-          // Navigation will be handled by the NavigationContainer
           console.log('[App] Notification tapped, chatId:', data.chatId)
         }
       }
     )
 
-    // Track app state changes
     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
       appState.current = nextAppState
     })
@@ -136,18 +145,14 @@ function RootNavigator() {
     }
   }, [])
 
-  // Separate effect for listening to new messages (depends on user and currentChatId)
   useEffect(() => {
     if (!user) return
 
-    // Listen for new messages and show notifications when app is backgrounded
     const unsubscribeNewMessage = socketService.on('new_message', async (data: any) => {
       const isBackground = appState.current !== 'active'
       const isCurrentChat = currentChatId === data.chatId
       const isOwnMessage = data.message?.senderId === user.id
 
-      // Show notification if app is in background OR user is not in this chat
-      // Don't show notification for own messages
       if (!isOwnMessage && (isBackground || !isCurrentChat)) {
         const senderName = data.message?.sender?.name || 'Someone'
         const content = data.message?.content || 'Sent a message'
@@ -168,7 +173,12 @@ function RootNavigator() {
   if (!isInitialized) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#25D366" />
+        <View style={styles.splashLogo}>
+          <Text style={styles.splashLogoText}>W</Text>
+        </View>
+        <Text style={styles.splashTitle}>WorkChat</Text>
+        <Text style={styles.splashSubtitle}>A Work WhatsApp with enforced execution</Text>
+        <ActivityIndicator size="large" color="#FFFFFF" style={{ marginTop: 48 }} />
       </View>
     )
   }
@@ -185,6 +195,7 @@ function RootNavigator() {
           <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="NewChat" component={NewChatScreen} />
           <Stack.Screen name="NewGroup" component={NewGroupScreen} />
+          <Stack.Screen name="AdminSummary" component={AdminSummaryScreen} />
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />
@@ -196,12 +207,14 @@ function RootNavigator() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <NavigationContainer>
-          <RootNavigator />
-        </NavigationContainer>
-        <StatusBar style="light" />
-      </QueryClientProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <NavigationContainer>
+            <RootNavigator />
+          </NavigationContainer>
+          <StatusBar style="light" />
+        </QueryClientProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   )
 }
@@ -212,5 +225,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#075E54',
+  },
+  splashLogo: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  splashLogoText: {
+    fontSize: 48,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  splashTitle: {
+    fontSize: 28,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  splashSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 32,
   },
 })

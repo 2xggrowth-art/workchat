@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useNavigation } from '@react-navigation/native'
 import { useAuthStore } from '../../stores/authStore'
+import { useTheme } from '../../contexts/ThemeContext'
 
 interface HeaderProps {
   title?: string
@@ -9,18 +11,27 @@ interface HeaderProps {
 
 export default function Header({ title = 'WorkChat' }: HeaderProps) {
   const insets = useSafeAreaInsets()
-  const logout = useAuthStore((state) => state.logout)
+  const navigation = useNavigation()
+  const { user, logout } = useAuthStore()
+  const { colors } = useTheme()
   const [showMenu, setShowMenu] = useState(false)
+
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
 
   const handleLogout = () => {
     setShowMenu(false)
     logout()
   }
 
+  const handleAdminSummary = () => {
+    setShowMenu(false)
+    ;(navigation as any).navigate('AdminSummary')
+  }
+
   return (
     <>
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Text style={styles.headerTitle}>{title}</Text>
+      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: colors.headerBg }]}>
+        <Text style={[styles.headerTitle, { color: colors.headerText }]}>{title}</Text>
         <TouchableOpacity onPress={() => setShowMenu(true)} style={styles.menuButton}>
           <View style={styles.menuDots}>
             <View style={styles.dot} />
@@ -39,6 +50,11 @@ export default function Header({ title = 'WorkChat' }: HeaderProps) {
       >
         <Pressable style={styles.menuOverlay} onPress={() => setShowMenu(false)}>
           <View style={[styles.menuDropdown, { top: insets.top + 50 }]}>
+            {isAdmin && (
+              <TouchableOpacity style={styles.menuItem} onPress={handleAdminSummary}>
+                <Text style={styles.menuItemText}>Admin Summary</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
               <Text style={styles.menuItemText}>Logout</Text>
             </TouchableOpacity>

@@ -26,7 +26,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <div className="h-screen bg-[#111B21]">
+    <div className="h-screen bg-[#f0f2f5] dark:bg-[#111B21]">
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route

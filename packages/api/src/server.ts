@@ -5,6 +5,7 @@ import cookie from '@fastify/cookie'
 import jwt from '@fastify/jwt'
 import multipart from '@fastify/multipart'
 import rateLimit from '@fastify/rate-limit'
+import crypto from 'crypto'
 import { Server as SocketServer } from 'socket.io'
 
 import { authRoutes } from './routes/auth'
@@ -15,6 +16,7 @@ import { taskRoutes } from './routes/tasks'
 import { uploadRoutes } from './routes/upload'
 import { setupSocketHandlers } from './socket'
 import { errorHandler } from './middleware/errorHandler'
+import { startScheduler, stopScheduler } from './services/scheduler'
 
 const PORT = parseInt(process.env.PORT || '3000', 10)
 const HOST = process.env.HOST || '0.0.0.0'
@@ -31,7 +33,14 @@ async function buildServer() {
 
   // Register plugins
   await fastify.register(cors, {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: process.env.NODE_ENV === 'production'
+      ? process.env.CORS_ORIGIN || 'http://localhost:5173'
+      : [
+          'http://localhost:5173',
+          'http://localhost:5174',
+          'http://localhost:5175',
+          'http://localhost:5177',
+        ],
     credentials: true,
   })
 
@@ -41,8 +50,13 @@ async function buildServer() {
 
   await fastify.register(cookie)
 
+  const jwtSecret = process.env.JWT_SECRET
+    || (process.env.NODE_ENV === 'production'
+      ? (() => { throw new Error('JWT_SECRET environment variable is required in production') })()
+      : crypto.randomBytes(32).toString('hex'))
+
   await fastify.register(jwt, {
-    secret: process.env.JWT_SECRET || 'super-secret-key-change-in-production',
+    secret: jwtSecret,
     sign: {
       expiresIn: process.env.JWT_EXPIRES_IN || '15m',
     },
@@ -94,7 +108,14 @@ async function start() {
   // Setup Socket.io with Fastify's server
   const io = new SocketServer(fastify.server, {
     cors: {
-      origin: '*', // Allow all origins for mobile app
+      origin: process.env.NODE_ENV === 'production'
+        ? (process.env.CORS_ORIGIN || 'http://localhost:5173')
+        : [
+            'http://localhost:5173',
+            'http://localhost:5174',
+            'http://localhost:5175',
+            'http://localhost:5177',
+          ],
       credentials: true,
     },
     transports: ['websocket', 'polling'],
@@ -108,12 +129,16 @@ async function start() {
 
   try {
     await fastify.listen({ port: PORT, host: HOST })
+    // Start cron scheduler after server is listening
+    startScheduler(io)
+
     console.log(`
 ╔════════════════════════════════════════════╗
 ║         WorkChat API Server                ║
 ╠════════════════════════════════════════════╣
 ║  🚀 Server running on http://${HOST}:${PORT}    ║
 ║  📡 WebSocket ready                        ║
+║  ⏰ Scheduler active                       ║
 ║  🌍 Environment: ${process.env.NODE_ENV || 'development'}           ║
 ╚════════════════════════════════════════════╝
     `)
@@ -128,10 +153,12 @@ start()
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\nShutting down gracefully...')
+  stopScheduler()
   process.exit(0)
 })
 
 process.on('SIGTERM', () => {
   console.log('\nShutting down gracefully...')
+  stopScheduler()
   process.exit(0)
 })

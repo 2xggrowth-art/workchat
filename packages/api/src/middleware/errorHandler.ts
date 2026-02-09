@@ -1,5 +1,6 @@
 import { FastifyError, FastifyReply, FastifyRequest } from 'fastify'
 import { ZodError } from 'zod'
+import { Prisma } from '@workchat/database'
 
 interface ErrorResponse {
   success: false
@@ -32,6 +33,32 @@ export function errorHandler(
     }
     reply.status(400).send(response)
     return
+  }
+
+  // Handle Prisma errors
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === 'P2002') {
+      const response: ErrorResponse = {
+        success: false,
+        error: {
+          code: 'CONFLICT',
+          message: 'A record with this value already exists',
+        },
+      }
+      reply.status(409).send(response)
+      return
+    }
+    if (error.code === 'P2025') {
+      const response: ErrorResponse = {
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Record not found',
+        },
+      }
+      reply.status(404).send(response)
+      return
+    }
   }
 
   // Handle JWT errors

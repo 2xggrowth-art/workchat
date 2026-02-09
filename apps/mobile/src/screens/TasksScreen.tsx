@@ -9,7 +9,6 @@ import {
   RefreshControl,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { api } from '../services/api'
 import TaskDetailsModal from '../components/task/TaskDetailsModal'
 
@@ -27,29 +26,35 @@ interface Task {
   message?: {
     chatId: string
   }
+  steps?: Array<{
+    id: string
+    completedAt?: string
+  }>
 }
 
-const TASK_STATUS_COLORS: Record<string, string> = {
-  PENDING: '#3B82F6',
-  IN_PROGRESS: '#EAB308',
-  COMPLETED: '#22C55E',
-  APPROVED: '#22C55E',
-  REOPENED: '#A855F7',
+const STATUS_COLORS: Record<string, string> = {
+  PENDING: '#2196F3',
+  IN_PROGRESS: '#FFC107',
+  COMPLETED: '#4CAF50',
+  APPROVED: '#4CAF50',
+  REOPENED: '#9C27B0',
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  LOW: '#6B7280',
-  MEDIUM: '#3B82F6',
-  HIGH: '#F97316',
-  URGENT: '#EF4444',
+const STATUS_BG: Record<string, string> = {
+  PENDING: 'rgba(33,150,243,0.1)',
+  IN_PROGRESS: 'rgba(255,193,7,0.1)',
+  COMPLETED: 'rgba(76,175,80,0.1)',
+  APPROVED: 'rgba(76,175,80,0.1)',
+  REOPENED: 'rgba(156,39,176,0.1)',
 }
+
+type FilterType = 'all' | 'pending' | 'overdue' | 'done'
 
 export default function TasksScreen() {
-  const insets = useSafeAreaInsets()
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'IN_PROGRESS' | 'COMPLETED'>('ALL')
+  const [filter, setFilter] = useState<FilterType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [showTaskModal, setShowTaskModal] = useState(false)
 
@@ -80,53 +85,105 @@ export default function TasksScreen() {
     fetchTasks()
   }
 
+  const isOverdue = (task: Task) => {
+    if (!task.dueDate) return false
+    if (task.status === 'COMPLETED' || task.status === 'APPROVED') return false
+    return new Date(task.dueDate) < new Date()
+  }
+
   const filteredTasks = tasks.filter((task) => {
-    if (filter === 'ALL') return true
-    return task.status === filter
+    switch (filter) {
+      case 'pending':
+        return task.status === 'PENDING' || task.status === 'IN_PROGRESS'
+      case 'overdue':
+        return isOverdue(task)
+      case 'done':
+        return task.status === 'COMPLETED' || task.status === 'APPROVED'
+      default:
+        return true
+    }
   })
 
-  const formatDate = (dateString: string) => {
+  const formatDueDate = (dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+      ', ' +
+      date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+  }
+
+  const getTaskColor = (task: Task) => {
+    if (isOverdue(task)) return '#F44336'
+    return STATUS_COLORS[task.status] || '#2196F3'
+  }
+
+  const getStatusLabel = (task: Task) => {
+    if (isOverdue(task)) return 'OVERDUE'
+    return task.status.replace('_', ' ')
+  }
+
+  const getStepProgress = (task: Task) => {
+    if (!task.steps || task.steps.length === 0) return null
+    const done = task.steps.filter((s) => s.completedAt).length
+    return `${done}/${task.steps.length}`
   }
 
   const openTaskDetails = (task: Task) => {
+    if (!task.message?.chatId) {
+      // Cannot open details without a valid chatId
+      return
+    }
     setSelectedTask(task)
     setShowTaskModal(true)
   }
 
-  const closeTaskModal = () => {
-    setShowTaskModal(false)
-    setSelectedTask(null)
-  }
-
-  const renderTask = ({ item }: { item: Task }) => (
-    <TouchableOpacity style={styles.taskItem} onPress={() => openTaskDetails(item)}>
-      <View style={styles.taskHeader}>
-        <View style={[styles.statusDot, { backgroundColor: TASK_STATUS_COLORS[item.status] }]} />
-        <Text style={styles.taskTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
-      </View>
-      <View style={styles.taskMeta}>
-        <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_COLORS[item.priority] + '20' }]}>
-          <Text style={[styles.priorityText, { color: PRIORITY_COLORS[item.priority] }]}>
-            {item.priority}
-          </Text>
-        </View>
-        <Text style={styles.taskOwner}>{item.owner?.name}</Text>
-        {item.dueDate && (
-          <Text style={styles.taskDue}>Due: {formatDate(item.dueDate)}</Text>
-        )}
-      </View>
-      <View style={styles.taskFooter}>
-        <Text style={[styles.taskStatus, { color: TASK_STATUS_COLORS[item.status] }]}>
-          {item.status.replace('_', ' ')}
-        </Text>
-        <Text style={styles.tapHint}>Tap to view details</Text>
-      </View>
+  const renderSegment = (label: string, value: FilterType) => (
+    <TouchableOpacity
+      key={value}
+      style={[styles.segBtn, filter === value && styles.segBtnActive]}
+      onPress={() => setFilter(value)}
+    >
+      <Text style={[styles.segBtnText, filter === value && styles.segBtnTextActive]}>
+        {label}
+      </Text>
     </TouchableOpacity>
   )
+
+  const renderTask = ({ item }: { item: Task }) => {
+    const color = getTaskColor(item)
+    const statusBg = isOverdue(item) ? 'rgba(244,67,54,0.1)' : STATUS_BG[item.status]
+    const stepProgress = getStepProgress(item)
+
+    return (
+      <TouchableOpacity
+        style={styles.taskCard}
+        onPress={() => openTaskDetails(item)}
+        activeOpacity={0.8}
+      >
+        <View style={[styles.taskStripe, { backgroundColor: color }]} />
+        <View style={styles.taskInfo}>
+          <Text style={styles.taskTitle} numberOfLines={2}>
+            {item.title}
+          </Text>
+          <View style={styles.taskSubRow}>
+            <Text style={styles.taskSubText}>{item.owner?.name}</Text>
+            {item.dueDate && (
+              <Text style={styles.taskSubText}> - Due: {formatDueDate(item.dueDate)}</Text>
+            )}
+          </View>
+          <View style={styles.taskFooter}>
+            <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
+              <Text style={[styles.statusBadgeText, { color }]}>
+                {getStatusLabel(item)}
+              </Text>
+            </View>
+            {stepProgress && (
+              <Text style={styles.taskSteps}>{stepProgress} steps</Text>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    )
+  }
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
@@ -135,26 +192,19 @@ export default function TasksScreen() {
     </View>
   )
 
-  const renderFilters = () => (
-    <View style={styles.filterContainer}>
-      {(['ALL', 'PENDING', 'IN_PROGRESS', 'COMPLETED'] as const).map((f) => (
-        <TouchableOpacity
-          key={f}
-          style={[styles.filterButton, filter === f && styles.filterButtonActive]}
-          onPress={() => setFilter(f)}
-        >
-          <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-            {f === 'ALL' ? 'All' : f.replace('_', ' ')}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  )
-
   return (
     <View style={styles.container}>
-      {renderFilters()}
+      {/* Segment Control */}
+      <View style={styles.segmentContainer}>
+        <View style={styles.segment}>
+          {renderSegment('All', 'all')}
+          {renderSegment('Pending', 'pending')}
+          {renderSegment('Overdue', 'overdue')}
+          {renderSegment('Done', 'done')}
+        </View>
+      </View>
 
+      {/* Task List */}
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#128C7E" />
@@ -176,7 +226,10 @@ export default function TasksScreen() {
       {selectedTask && (
         <TaskDetailsModal
           visible={showTaskModal}
-          onClose={closeTaskModal}
+          onClose={() => {
+            setShowTaskModal(false)
+            setSelectedTask(null)
+          }}
           taskId={selectedTask.id}
           chatId={selectedTask.message?.chatId || ''}
           onTaskUpdated={fetchTasks}
@@ -189,31 +242,40 @@ export default function TasksScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F5F5F5',
   },
-  filterContainer: {
+  segmentContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 4,
+  },
+  segment: {
     flexDirection: 'row',
-    padding: 12,
-    gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#EEEEEE',
+    borderRadius: 10,
+    padding: 3,
   },
-  filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
+  segBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
   },
-  filterButtonActive: {
-    backgroundColor: '#128C7E',
+  segBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  filterText: {
+  segBtnText: {
     fontSize: 13,
-    color: '#6B7280',
     fontWeight: '500',
+    color: '#757575',
   },
-  filterTextActive: {
-    color: '#FFFFFF',
+  segBtnTextActive: {
+    color: '#212121',
   },
   loadingContainer: {
     flex: 1,
@@ -222,6 +284,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 12,
+    paddingTop: 8,
   },
   listContentEmpty: {
     flex: 1,
@@ -235,82 +298,65 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#111827',
+    color: '#212121',
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#9E9E9E',
     textAlign: 'center',
   },
-  taskItem: {
+  taskCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 14,
+    flexDirection: 'row',
     marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 2,
     elevation: 1,
+    overflow: 'hidden',
   },
-  taskHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 10,
+  taskStripe: {
+    width: 4,
   },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 10,
-    marginTop: 4,
+  taskInfo: {
+    flex: 1,
+    padding: 14,
   },
   taskTitle: {
-    flex: 1,
     fontSize: 15,
-    fontWeight: '500',
-    color: '#111827',
-    lineHeight: 20,
+    fontWeight: '600',
+    color: '#212121',
+    marginBottom: 4,
   },
-  taskMeta: {
+  taskSubRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-    paddingLeft: 20,
+    marginTop: 3,
   },
-  priorityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  priorityText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  taskOwner: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  taskDue: {
-    fontSize: 13,
-    color: '#6B7280',
+  taskSubText: {
+    fontSize: 12,
+    color: '#9E9E9E',
   },
   taskFooter: {
-    paddingLeft: 20,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
   },
-  taskStatus: {
-    fontSize: 12,
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  statusBadgeText: {
+    fontSize: 11,
     fontWeight: '600',
   },
-  tapHint: {
-    fontSize: 11,
-    color: '#9CA3AF',
+  taskSteps: {
+    fontSize: 12,
+    color: '#9E9E9E',
   },
 })

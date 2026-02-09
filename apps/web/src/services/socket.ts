@@ -57,6 +57,6 @@ export function leaveChat(chatId: string): void {
 
 export function emitTyping(chatId: string): void {
   if (socket?.connected) {
-    socket.emit('typing', { chatId })
+    socket.emit('typing', { chatId, isTyping: true })
   }
 }

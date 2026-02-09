@@ -2,8 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
-/* WhatsApp Web Dark Theme Colors */
+/* WhatsApp Web Theme Colors */
 :root {
+  --wa-bg-default: #f0f2f5;
+  --wa-bg-panel: #ffffff;
+  --wa-bg-panel-header: #075E54;
+  --wa-bg-message-incoming: #ffffff;
+  --wa-bg-message-outgoing: #d9fdd3;
+  --wa-bg-chat: #ECE5DD;
+  --wa-bg-input: #ffffff;
+  --wa-bg-hover: #f5f6f6;
+  --wa-bg-active: #e9edef;
+  --wa-border: #e9edef;
+  --wa-text-primary: #111b21;
+  --wa-text-secondary: #667781;
+  --wa-text-muted: #8696a0;
+  --wa-accent: #128C7E;
+  --wa-accent-darker: #075E54;
+  --wa-blue-check: #53BDEB;
+}
+
+.dark {
   --wa-bg-default: #111B21;
   --wa-bg-panel: #202C33;
   --wa-bg-panel-header: #202C33;
@@ -92,5 +111,19 @@ body {
   }
   30% {
     transform: translateY(-5px);
+  }
+}
+
+/* Slide-in animation for task detail panel */
+.animate-slide-in {
+  animation: slideIn 0.25s ease forwards;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
   }
 }

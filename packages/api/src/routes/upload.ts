@@ -1,16 +1,26 @@
 import { FastifyPluginAsync } from 'fastify'
 import { authenticate } from '../middleware/auth'
-import { createWriteStream, mkdirSync, existsSync, createReadStream, statSync } from 'fs'
-import { join, extname } from 'path'
-import { pipeline } from 'stream/promises'
-import { generateUploadFilename } from '@workchat/shared'
+import { extname } from 'path'
+import {
+  uploadFile,
+  getFileUrl,
+  useS3,
+  getLocalFilePath,
+  getLocalFileStream,
+  getLocalFileStat,
+} from '../services/storage'
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads'
+// Allowed upload mime types
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'video/mp4', 'video/webm', 'video/quicktime',
+  'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/aac', 'audio/mp4', 'audio/x-m4a',
+  'application/pdf', 'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+])
 
-// Ensure upload directory exists
-if (!existsSync(UPLOAD_DIR)) {
-  mkdirSync(UPLOAD_DIR, { recursive: true })
-}
+// Max file size: 50MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024
 
 // Simple mime type lookup
 const MIME_TYPES: Record<string, string> = {
@@ -25,6 +35,8 @@ const MIME_TYPES: Record<string, string> = {
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
   '.ogg': 'audio/ogg',
+  '.aac': 'audio/aac',
+  '.m4a': 'audio/x-m4a',
   '.pdf': 'application/pdf',
   '.doc': 'application/msword',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -38,6 +50,7 @@ function getMimeType(filename: string): string {
 export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * POST /api/upload - Upload a file
+   * Uploads to MinIO S3 if configured, otherwise falls back to local filesystem.
    */
   fastify.post('/', {
     preHandler: [authenticate],
@@ -51,32 +64,137 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
       })
     }
 
-    // Generate unique filename
-    const filename = generateUploadFilename(data.filename)
-    const filepath = join(UPLOAD_DIR, filename)
+    // Read file into buffer
+    const chunks: Buffer[] = []
+    for await (const chunk of data.file) {
+      chunks.push(chunk as Buffer)
+    }
+    const buffer = Buffer.concat(chunks)
 
-    // Save file
-    await pipeline(data.file, createWriteStream(filepath))
+    if (buffer.length === 0) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'EMPTY_FILE', message: 'Uploaded file is empty' },
+      })
+    }
 
-    // Return URL (in production, this would be a CDN or S3 URL)
-    const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3000}`
-    const fileUrl = `${baseUrl}/api/upload/${filename}`
+    if (buffer.length > MAX_FILE_SIZE) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'FILE_TOO_LARGE', message: 'File exceeds maximum size of 50MB' },
+      })
+    }
+
+    const contentType = data.mimetype || getMimeType(data.filename)
+
+    if (!ALLOWED_MIME_TYPES.has(contentType)) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'INVALID_FILE_TYPE', message: `File type '${contentType}' is not allowed` },
+      })
+    }
+
+    const { key } = await uploadFile(buffer, data.filename, contentType)
+    const fileUrl = await getFileUrl(key)
 
     return {
       success: true,
       data: {
-        filename,
+        key,
+        filename: data.filename,
         originalName: data.filename,
-        mimetype: data.mimetype,
+        mimetype: contentType,
         url: fileUrl,
       },
     }
   })
 
   /**
-   * GET /api/upload/:filename - Serve uploaded file (for local development)
+   * GET /api/upload/file/:key - Get file URL or serve file
+   * For S3: redirects to a presigned URL
+   * For local: serves the file directly
    */
-  fastify.get('/:filename', async (request, reply) => {
+  fastify.get('/file/*', {
+    preHandler: [authenticate],
+  }, async (request, reply) => {
+    const { '*': key } = request.params as { '*': string }
+
+    if (!key) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'MISSING_KEY', message: 'File key is required' },
+      })
+    }
+
+    // Prevent directory traversal
+    if (key.includes('..')) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'INVALID_KEY', message: 'Invalid file key' },
+      })
+    }
+
+    if (useS3) {
+      const url = await getFileUrl(key)
+      return reply.redirect(302, url)
+    }
+
+    // Local fallback: serve file from disk
+    const filepath = getLocalFilePath(key)
+    if (!filepath) {
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'File not found' },
+      })
+    }
+
+    const stat = getLocalFileStat(filepath)
+    const mimeType = getMimeType(key)
+
+    reply.header('Content-Type', mimeType)
+    reply.header('Content-Length', stat.size)
+    reply.header('Cache-Control', 'public, max-age=31536000')
+
+    return reply.send(getLocalFileStream(filepath))
+  })
+
+  /**
+   * GET /api/upload/url/:key - Get presigned URL for a file
+   * Returns JSON with the URL instead of redirecting
+   */
+  fastify.get('/url/*', {
+    preHandler: [authenticate],
+  }, async (request, reply) => {
+    const { '*': key } = request.params as { '*': string }
+
+    if (!key) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'MISSING_KEY', message: 'File key is required' },
+      })
+    }
+
+    if (key.includes('..')) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'INVALID_KEY', message: 'Invalid file key' },
+      })
+    }
+
+    const url = await getFileUrl(key)
+
+    return {
+      success: true,
+      data: { url },
+    }
+  })
+
+  /**
+   * Legacy: GET /api/upload/:filename - Serve uploaded file (backward compat for old local uploads)
+   */
+  fastify.get('/:filename', {
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const { filename } = request.params as { filename: string }
 
     // Prevent directory traversal
@@ -87,22 +205,22 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
       })
     }
 
-    const filepath = join(UPLOAD_DIR, filename)
-
-    if (!existsSync(filepath)) {
+    // Try to find in local uploads root (legacy flat structure)
+    const filepath = getLocalFilePath(filename)
+    if (!filepath) {
       return reply.status(404).send({
         success: false,
         error: { code: 'NOT_FOUND', message: 'File not found' },
       })
     }
 
-    const stat = statSync(filepath)
+    const stat = getLocalFileStat(filepath)
     const mimeType = getMimeType(filename)
 
     reply.header('Content-Type', mimeType)
     reply.header('Content-Length', stat.size)
     reply.header('Cache-Control', 'public, max-age=31536000')
 
-    return reply.send(createReadStream(filepath))
+    return reply.send(getLocalFileStream(filepath))
   })
 }

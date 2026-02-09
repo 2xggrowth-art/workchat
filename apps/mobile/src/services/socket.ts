@@ -13,23 +13,23 @@ class SocketService {
 
   async connect() {
     if (this.socket?.connected) {
-      console.log('[Socket] Already connected')
+      if (__DEV__) console.log('[Socket] Already connected')
       return
     }
 
     if (this.isConnecting) {
-      console.log('[Socket] Connection already in progress')
+      if (__DEV__) console.log('[Socket] Connection already in progress')
       return
     }
 
     const token = await AsyncStorage.getItem('workchat-token')
     if (!token) {
-      console.log('[Socket] No token, skipping connection')
+      if (__DEV__) console.log('[Socket] No token, skipping connection')
       return
     }
 
     this.isConnecting = true
-    console.log('[Socket] Connecting to:', API_URL)
+    if (__DEV__) console.log('[Socket] Connecting to:', API_URL)
 
     this.socket = io(API_URL, {
       auth: { token },
@@ -42,51 +42,56 @@ class SocketService {
     })
 
     this.socket.on('connect', async () => {
-      console.log('[Socket] Connected:', this.socket?.id)
+      if (__DEV__) console.log('[Socket] Connected:', this.socket?.id)
       this.isConnecting = false
 
       // Join ALL user's chats so we receive notifications for all of them
       try {
         const response = await api.get('/api/chats')
         const chats = response.data.data || []
-        console.log('[Socket] Joining all user chats:', chats.length)
+        if (__DEV__) console.log('[Socket] Joining all user chats:', chats.length)
         chats.forEach((chat: { id: string }) => {
           this.socket?.emit('join_chat', { chatId: chat.id })
         })
       } catch (error) {
-        console.log('[Socket] Failed to fetch chats for auto-join:', error)
+        if (__DEV__) console.log('[Socket] Failed to fetch chats for auto-join:', error)
       }
 
       // Also join any pending chat rooms (for the currently open chat)
       this.pendingChatJoins.forEach((chatId) => {
-        console.log('[Socket] Auto-joining pending chat:', chatId)
+        if (__DEV__) console.log('[Socket] Auto-joining pending chat:', chatId)
         this.socket?.emit('join_chat', { chatId })
       })
     })
 
     this.socket.on('disconnect', (reason) => {
-      console.log('[Socket] Disconnected:', reason)
+      if (__DEV__) console.log('[Socket] Disconnected:', reason)
     })
 
     this.socket.on('connect_error', (error) => {
-      console.log('[Socket] Connection error:', error.message)
+      if (__DEV__) console.log('[Socket] Connection error:', error.message)
       this.isConnecting = false
     })
 
     // Set up event forwarding
     this.socket.on('new_message', (data) => {
-      console.log('[Socket] New message received:', data.message?.id)
+      if (__DEV__) console.log('[Socket] New message received:', data.message?.id)
       this.emit('new_message', data)
     })
 
     this.socket.on('message_converted_to_task', (data) => {
-      console.log('[Socket] Message converted to task:', data.messageId)
+      if (__DEV__) console.log('[Socket] Message converted to task:', data.messageId)
       this.emit('message_converted_to_task', data)
     })
 
     this.socket.on('chat_created', (data) => {
-      console.log('[Socket] Chat created:', data.chat?.id)
+      if (__DEV__) console.log('[Socket] Chat created:', data.chat?.id)
       this.emit('chat_created', data)
+    })
+
+    this.socket.on('task_status_changed', (data) => {
+      if (__DEV__) console.log('[Socket] Task status changed:', data.taskId)
+      this.emit('task_status_changed', data)
     })
 
     this.socket.on('user_typing', (data) => {
@@ -104,7 +109,7 @@ class SocketService {
 
   disconnect() {
     if (this.socket) {
-      console.log('[Socket] Disconnecting')
+      if (__DEV__) console.log('[Socket] Disconnecting')
       this.socket.disconnect()
       this.socket = null
     }
@@ -115,10 +120,10 @@ class SocketService {
     this.pendingChatJoins.add(chatId)
 
     if (this.socket?.connected) {
-      console.log('[Socket] Joining chat:', chatId)
+      if (__DEV__) console.log('[Socket] Joining chat:', chatId)
       this.socket.emit('join_chat', { chatId })
     } else {
-      console.log('[Socket] Not connected, queued join for chat:', chatId)
+      if (__DEV__) console.log('[Socket] Not connected, queued join for chat:', chatId)
       // Try to connect if not already
       this.connect()
     }
@@ -128,7 +133,7 @@ class SocketService {
     this.pendingChatJoins.delete(chatId)
 
     if (this.socket?.connected) {
-      console.log('[Socket] Leaving chat:', chatId)
+      if (__DEV__) console.log('[Socket] Leaving chat:', chatId)
       this.socket.emit('leave_chat', { chatId })
     }
   }

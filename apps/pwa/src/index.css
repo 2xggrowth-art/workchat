@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --safe-top: env(safe-area-inset-top, 20px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: none;
+}
+
+/* iOS safe areas */
+.pt-safe { padding-top: var(--safe-top); }
+.pb-safe { padding-bottom: var(--safe-bottom); }
+.pl-safe { padding-left: var(--safe-left); }
+.pr-safe { padding-right: var(--safe-right); }
+
+/* iOS-style backdrop blur nav/tab */
+.ios-blur {
+  background: rgba(249,249,249,0.94);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .ios-blur {
+    background: rgba(28,28,30,0.94);
+  }
+}
+
+/* Animations */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes slideOutRight {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes sheetDown {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+.animate-slide-in { animation: slideInRight 300ms ease forwards; }
+.animate-slide-out { animation: slideOutRight 300ms ease forwards; }
+.animate-sheet-up { animation: sheetUp 300ms ease forwards; }
+.animate-sheet-down { animation: sheetDown 300ms ease forwards; }
+
+/* Scrollbar hide */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Dark mode overrides for chat bg */
+@media (prefers-color-scheme: dark) {
+  .chat-bg-pattern { background: #1a1a1a; }
+  .msg-date-chip { background: rgba(60,60,60,0.9); }
+  .dark-sent-bubble { background: #056162; }
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   View,
   Text,
@@ -8,140 +8,84 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native'
-import { useNavigation } from '@react-navigation/native'
 import { useAuthStore } from '../stores/authStore'
 
-type Step = 'phone' | 'otp' | 'name'
+type Mode = 'login' | 'register' | 'pending'
 
 export default function LoginScreen() {
-  const navigation = useNavigation()
-  const { requestOtp, verifyOtp, otpPhone, otpExpiresIn, clearOtpState, isLoading } = useAuthStore()
+  const { login, register, isLoading } = useAuthStore()
 
-  const [step, setStep] = useState<Step>('phone')
+  const [mode, setMode] = useState<Mode>('login')
   const [phone, setPhone] = useState('')
-  const [otp, setOtp] = useState('')
+  const [pin, setPin] = useState('')
   const [name, setName] = useState('')
   const [error, setError] = useState('')
-  const [countdown, setCountdown] = useState(0)
-  const [devMode, setDevMode] = useState(false)
 
-  // Handle OTP expiry countdown
-  useEffect(() => {
-    if (otpExpiresIn && otpExpiresIn > 0) {
-      setCountdown(otpExpiresIn)
-      const timer = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer)
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-      return () => clearInterval(timer)
-    }
-  }, [otpExpiresIn])
-
-  // Restore phone if OTP was already requested
-  useEffect(() => {
-    if (otpPhone) {
-      setPhone(otpPhone)
-      setStep('otp')
-    }
-  }, [otpPhone])
-
-  const handleRequestOtp = async () => {
-    if (!phone.trim()) {
-      setError('Please enter your phone number')
+  const handleLogin = async () => {
+    if (!phone.trim() || !pin.trim()) {
+      setError('Please enter phone number and pin')
       return
     }
     setError('')
 
     try {
-      const result = await requestOtp(phone)
-      if (result.devMode) {
-        setDevMode(true)
-      }
-      setStep('otp')
+      const formattedPhone = phone.startsWith('+') ? phone : `+${phone}`
+      await login(formattedPhone, pin)
     } catch (err: any) {
-      console.log('[Login] OTP error:', err.message, err.code)
-      const errorMsg = err.response?.data?.error?.message ||
-                       err.message ||
-                       'Failed to send OTP'
-      setError(`${errorMsg}${err.code ? ` (${err.code})` : ''}`)
-    }
-  }
-
-  const handleVerifyOtp = async () => {
-    if (otp.length !== 6) {
-      setError('Please enter the 6-digit code')
-      return
-    }
-    setError('')
-
-    try {
-      await verifyOtp(phone, otp, name || undefined)
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'ChatList' as never }],
-      })
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error?.message || 'Verification failed'
-      if (errorMsg.includes('Name is required')) {
-        setStep('name')
-        setError('')
+      const msg = err.response?.data?.error?.message || err.message || 'Login failed'
+      if (msg.includes('pending approval')) {
+        setMode('pending')
       } else {
-        setError(errorMsg)
+        setError(msg)
       }
     }
   }
 
-  const handleSetName = async () => {
-    if (!name.trim()) {
-      setError('Please enter your name')
+  const handleRegister = async () => {
+    if (!phone.trim() || !pin.trim() || !name.trim()) {
+      setError('Please fill in all fields')
+      return
+    }
+    if (pin.length < 4 || pin.length > 6) {
+      setError('PIN must be 4-6 digits')
       return
     }
     setError('')
 
     try {
-      await verifyOtp(phone, otp, name)
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'ChatList' as never }],
-      })
+      const formattedPhone = phone.startsWith('+') ? phone : `+${phone}`
+      await register(formattedPhone, pin, name)
+      setMode('pending')
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Registration failed')
+      setError(err.response?.data?.error?.message || err.message || 'Registration failed')
     }
   }
 
-  const handleResendOtp = async () => {
-    if (countdown > 0) return
-    setError('')
-
-    try {
-      const result = await requestOtp(phone)
-      if (result.devMode) {
-        setDevMode(true)
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to resend OTP')
-    }
-  }
-
-  const handleBack = () => {
-    clearOtpState()
-    setStep('phone')
-    setOtp('')
-    setName('')
-    setError('')
-    setDevMode(false)
-  }
-
-  const formatCountdown = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
+  if (mode === 'pending') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.pendingContainer}>
+          <View style={styles.pendingIcon}>
+            <Text style={styles.pendingIconText}>&#x23F3;</Text>
+          </View>
+          <Text style={styles.pendingTitle}>Account Pending</Text>
+          <Text style={styles.pendingSubtitle}>
+            Your registration is pending admin approval. You will be able to log in once approved.
+          </Text>
+          <TouchableOpacity
+            style={styles.pendingButton}
+            onPress={() => {
+              setMode('login')
+              setError('')
+            }}
+          >
+            <Text style={styles.pendingButtonText}>Back to Login</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    )
   }
 
   return (
@@ -149,144 +93,102 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.content}>
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <View style={styles.logo}>
-            <Text style={styles.logoText}>W</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        {/* Header */}
+        <View style={styles.loginHeader}>
+          <View style={styles.logoSm}>
+            <Text style={styles.logoIcon}>W</Text>
           </View>
-          <Text style={styles.title}>WorkChat</Text>
-          <Text style={styles.subtitle}>
-            {step === 'phone' && 'Enter your phone number to continue'}
-            {step === 'otp' && 'Enter the verification code'}
-            {step === 'name' && 'Welcome! Enter your name'}
+          <Text style={styles.headerTitle}>WorkChat</Text>
+          <Text style={styles.headerSubtitle}>
+            {mode === 'login' ? 'Sign in to your workspace' : 'Create your account'}
           </Text>
         </View>
 
-        {/* Error */}
-        {error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : null}
-
-        {/* Dev mode notice */}
-        {devMode && step === 'otp' && (
-          <View style={styles.devModeContainer}>
-            <Text style={styles.devModeText}>Dev mode: Use code 123456</Text>
-          </View>
-        )}
-
         {/* Form */}
-        <View style={styles.form}>
-          {/* Step 1: Phone */}
-          {step === 'phone' && (
-            <>
-              <Text style={styles.label}>Phone Number</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="+91 9876543210"
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-                autoCapitalize="none"
-                editable={!isLoading}
-              />
-              <Text style={styles.hint}>We'll send you a verification code via SMS</Text>
+        <View style={styles.loginForm}>
+          {/* Error */}
+          {error ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
 
-              <TouchableOpacity
-                style={[styles.button, (isLoading || !phone.trim()) && styles.buttonDisabled]}
-                onPress={handleRequestOtp}
-                disabled={isLoading || !phone.trim()}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.buttonText}>Send OTP</Text>
-                )}
-              </TouchableOpacity>
-            </>
-          )}
-
-          {/* Step 2: OTP */}
-          {step === 'otp' && (
-            <>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>Verification Code</Text>
-                {countdown > 0 && (
-                  <Text style={styles.countdown}>Expires in {formatCountdown(countdown)}</Text>
-                )}
-              </View>
-              <TextInput
-                style={[styles.input, styles.otpInput]}
-                placeholder="Enter 6-digit code"
-                value={otp}
-                onChangeText={(text) => setOtp(text.replace(/\D/g, '').slice(0, 6))}
-                keyboardType="number-pad"
-                maxLength={6}
-                editable={!isLoading}
-              />
-              <Text style={styles.hint}>Code sent to {phone}</Text>
-
-              <TouchableOpacity
-                style={[styles.button, (isLoading || otp.length !== 6) && styles.buttonDisabled]}
-                onPress={handleVerifyOtp}
-                disabled={isLoading || otp.length !== 6}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.buttonText}>Verify</Text>
-                )}
-              </TouchableOpacity>
-
-              <View style={styles.linkRow}>
-                <TouchableOpacity onPress={handleBack}>
-                  <Text style={styles.linkText}>Change number</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleResendOtp} disabled={countdown > 0 || isLoading}>
-                  <Text style={[styles.linkText, countdown > 0 && styles.linkDisabled]}>
-                    {countdown > 0 ? `Resend in ${formatCountdown(countdown)}` : 'Resend OTP'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-
-          {/* Step 3: Name */}
-          {step === 'name' && (
-            <>
-              <Text style={styles.label}>Your Name</Text>
+          {mode === 'register' && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Full Name</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Enter your name"
+                placeholderTextColor="#9E9E9E"
                 value={name}
                 onChangeText={setName}
                 autoCapitalize="words"
-                autoFocus
                 editable={!isLoading}
               />
-              <Text style={styles.hint}>This is how others will see you in chats</Text>
-
-              <TouchableOpacity
-                style={[styles.button, (isLoading || !name.trim()) && styles.buttonDisabled]}
-                onPress={handleSetName}
-                disabled={isLoading || !name.trim()}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.buttonText}>Continue</Text>
-                )}
-              </TouchableOpacity>
-            </>
+            </View>
           )}
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Phone Number</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="+1234567890"
+              placeholderTextColor="#9E9E9E"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              editable={!isLoading}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>PIN</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter PIN (4-6 digits)"
+              placeholderTextColor="#9E9E9E"
+              value={pin}
+              onChangeText={(text) => setPin(text.replace(/\D/g, '').slice(0, 6))}
+              secureTextEntry
+              keyboardType="number-pad"
+              maxLength={6}
+              editable={!isLoading}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.btn, isLoading && styles.btnDisabled]}
+            onPress={mode === 'login' ? handleLogin : handleRegister}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.btnText}>{mode === 'login' ? 'Login' : 'Register'}</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.switchMode}
+            onPress={() => {
+              setMode(mode === 'login' ? 'register' : 'login')
+              setError('')
+            }}
+          >
+            <Text style={styles.switchModeText}>
+              {mode === 'login'
+                ? "Don't have an account? Register"
+                : 'Already have an account? Login'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.footerText}>
           By continuing, you agree to our Terms of Service
         </Text>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   )
 }
@@ -294,134 +196,151 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  loginHeader: {
     backgroundColor: '#075E54',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
+    paddingTop: 60,
+    paddingBottom: 32,
     paddingHorizontal: 24,
-  },
-  logoContainer: {
     alignItems: 'center',
-    marginBottom: 40,
   },
-  logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#25D366',
+  logoSm: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  logoText: {
-    fontSize: 40,
-    fontWeight: 'bold',
+  logoIcon: {
+    fontSize: 36,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '500',
     color: '#FFFFFF',
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 8,
+  headerSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
   },
-  subtitle: {
+  loginForm: {
+    padding: 32,
+    paddingTop: 24,
+    flex: 1,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 13,
+    color: '#757575',
+    marginBottom: 6,
+    fontWeight: '500',
+  },
+  input: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     fontSize: 16,
+    color: '#212121',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  btn: {
+    backgroundColor: '#25D366',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  btnDisabled: {
+    opacity: 0.6,
+  },
+  btnText: {
     color: '#FFFFFF',
-    opacity: 0.8,
-    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  switchMode: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  switchModeText: {
+    fontSize: 14,
+    color: '#128C7E',
+    fontWeight: '500',
   },
   errorContainer: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    backgroundColor: 'rgba(244, 67, 54, 0.1)',
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,
   },
   errorText: {
-    color: '#FCA5A5',
+    color: '#F44336',
     textAlign: 'center',
-  },
-  devModeContainer: {
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    padding: 8,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  devModeText: {
-    color: '#93C5FD',
-    textAlign: 'center',
-    fontSize: 13,
-  },
-  form: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-  },
-  label: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  countdown: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  input: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    padding: 16,
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  otpInput: {
-    textAlign: 'center',
-    fontSize: 24,
-    letterSpacing: 8,
-    fontWeight: '600',
-  },
-  hint: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginBottom: 16,
-  },
-  button: {
-    backgroundColor: '#25D366',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  linkRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-  },
-  linkText: {
-    color: '#25D366',
-    fontSize: 14,
-  },
-  linkDisabled: {
-    color: '#9CA3AF',
   },
   footerText: {
-    color: '#FFFFFF',
-    opacity: 0.7,
+    color: '#9E9E9E',
     textAlign: 'center',
-    fontSize: 14,
+    fontSize: 13,
+    paddingBottom: 24,
+    paddingHorizontal: 32,
+  },
+  pendingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    backgroundColor: '#075E54',
+  },
+  pendingIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  pendingIconText: {
+    fontSize: 40,
+    color: '#FFFFFF',
+  },
+  pendingTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  pendingSubtitle: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.8)',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+  pendingButton: {
+    backgroundColor: '#25D366',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+  },
+  pendingButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 })

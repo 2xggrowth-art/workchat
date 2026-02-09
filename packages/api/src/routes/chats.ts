@@ -12,7 +12,7 @@ const chatIdParamsSchema = z.object({
 
 const createChatSchema = z.object({
   type: z.nativeEnum(ChatType),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(100).optional(),
   memberIds: z.array(z.string()).optional().default([]),
 })
 
@@ -49,6 +49,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
                 phone: true,
                 name: true,
                 avatarUrl: true,
+                emoji: true,
               },
             },
           },
@@ -133,6 +134,12 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
     const body = createChatSchema.parse(request.body)
     const userId = request.user.id
 
+    // Only ADMIN and SUPER_ADMIN can create chats
+    const currentUser = await prisma.user.findUnique({ where: { id: userId } })
+    if (!currentUser || currentUser.role === 'STAFF') {
+      throw new ForbiddenError('Only admins can create chats')
+    }
+
     // Ensure creator is included in members
     const memberIds = [...new Set([userId, ...body.memberIds])]
 
@@ -140,10 +147,61 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
     // For group chats, creator is OWNER, others are MEMBER
     const isDirectChat = body.type === ChatType.DIRECT && memberIds.length === 2
 
+    // Prevent duplicate DIRECT chats between same two users
+    if (isDirectChat) {
+      const otherUserId = memberIds.find(id => id !== userId)!
+      const existingChat = await prisma.chat.findFirst({
+        where: {
+          type: 'DIRECT',
+          AND: [
+            { members: { some: { userId } } },
+            { members: { some: { userId: otherUserId } } },
+          ],
+        },
+        include: {
+          members: {
+            include: {
+              user: {
+                select: { id: true, phone: true, name: true, avatarUrl: true },
+              },
+            },
+          },
+        },
+      })
+      if (existingChat) {
+        return {
+          success: true,
+          data: {
+            id: existingChat.id,
+            type: existingChat.type,
+            name: existingChat.name,
+            createdBy: existingChat.createdBy,
+            createdAt: existingChat.createdAt,
+            members: existingChat.members.map((m) => ({
+              userId: m.userId,
+              user: m.user,
+              role: m.role,
+              joinedAt: m.joinedAt,
+            })),
+          },
+        }
+      }
+    }
+
+    // Auto-generate name for direct chats if not provided
+    let chatName = body.name || ''
+    if (isDirectChat && !chatName) {
+      const otherUserId = memberIds.find(id => id !== userId)
+      if (otherUserId) {
+        const otherUser = await prisma.user.findUnique({ where: { id: otherUserId }, select: { name: true } })
+        chatName = otherUser?.name || 'Direct Chat'
+      }
+    }
+
     const chat = await prisma.chat.create({
       data: {
         type: body.type,
-        name: body.name,
+        name: chatName,
         createdBy: userId,
         members: {
           createMany: {
@@ -165,6 +223,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
                 phone: true,
                 name: true,
                 avatarUrl: true,
+                emoji: true,
               },
             },
           },
@@ -217,6 +276,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
                 phone: true,
                 name: true,
                 avatarUrl: true,
+                emoji: true,
               },
             },
           },
@@ -269,6 +329,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
                 phone: true,
                 name: true,
                 avatarUrl: true,
+                emoji: true,
               },
             },
           },
@@ -717,6 +778,33 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     const now = new Date()
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+
+    // Get chat members
+    const chatMembers = await prisma.chatMember.findMany({
+      where: { chatId: id },
+      include: {
+        user: {
+          select: { id: true, name: true },
+        },
+      },
+    })
+
+    // Get users who sent messages in the last 24h
+    const activeUsers = await prisma.message.findMany({
+      where: {
+        chatId: id,
+        createdAt: { gte: twentyFourHoursAgo },
+      },
+      select: { senderId: true },
+      distinct: ['senderId'],
+    })
+
+    const activeUserIds = new Set(activeUsers.map((m) => m.senderId))
+    const noActivityUsers = chatMembers
+      .filter((m) => !activeUserIds.has(m.userId))
+      .map((m) => m.user)
+
     const summary = {
       total: tasks.length,
       byStatus: {
@@ -733,6 +821,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           t.status !== 'APPROVED' &&
           t.status !== 'COMPLETED'
       ).length,
+      noActivityUsers,
       byOwner: Object.values(
         tasks.reduce((acc, task) => {
           const ownerId = task.ownerId

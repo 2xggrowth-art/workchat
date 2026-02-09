@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   View,
   Text,
@@ -33,6 +33,7 @@ export default function NewGroupScreen() {
   const navigation = useNavigation()
   const insets = useSafeAreaInsets()
 
+  const searchTimeout = useRef<NodeJS.Timeout>()
   const [step, setStep] = useState<'select' | 'name'>('select')
   const [groupName, setGroupName] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -246,7 +247,7 @@ export default function NewGroupScreen() {
       >
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity onPress={() => setStep('select')} style={styles.backButton}>
-            <Text style={styles.backText}>←</Text>
+            <Text style={styles.backText}>{'<'}</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>New Group</Text>
           <TouchableOpacity
@@ -312,7 +313,7 @@ export default function NewGroupScreen() {
     >
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backText}>←</Text>
+          <Text style={styles.backText}>{'<'}</Text>
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>Add Members</Text>
@@ -357,7 +358,8 @@ export default function NewGroupScreen() {
             value={searchQuery}
             onChangeText={(text) => {
               setSearchQuery(text)
-              searchUsers(text)
+              clearTimeout(searchTimeout.current)
+              searchTimeout.current = setTimeout(() => searchUsers(text), 300)
             }}
             autoCapitalize="none"
             autoCorrect={false}

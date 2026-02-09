@@ -1,35 +1,21 @@
 import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '@workchat/database'
-import { OTP_EXPIRY_MINUTES } from '@workchat/shared'
 import { authenticate } from '../middleware/auth'
-import { AppError, UnauthorizedError } from '../middleware/errorHandler'
+import { AppError, ForbiddenError, UnauthorizedError } from '../middleware/errorHandler'
 import crypto from 'crypto'
-
-// Twilio Verify Service configuration
-const TWILIO_VERIFY_SERVICE_SID = process.env.TWILIO_VERIFY_SERVICE_SID || 'VAe554aec66d9657b6f8949312fc250e96'
-
-// Twilio client (lazy initialization)
-let twilioClient: any = null
-
-function getTwilioClient() {
-  if (!twilioClient && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-    // Dynamic import to avoid errors if Twilio isn't installed
-    const twilio = require('twilio')
-    twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-  }
-  return twilioClient
-}
+import bcrypt from 'bcrypt'
 
 // Validation schemas
-const requestOtpSchema = z.object({
+const registerSchema = z.object({
   phone: z.string().min(10).max(15),
+  name: z.string().min(1).max(100),
+  pin: z.string().regex(/^\d{4,6}$/, 'PIN must be 4-6 digits'),
 })
 
-const verifyOtpSchema = z.object({
+const loginSchema = z.object({
   phone: z.string().min(10).max(15),
-  otp: z.string().length(6),
-  name: z.string().min(1).max(100).optional(), // Required for new users
+  pin: z.string().min(1),
 })
 
 const refreshSchema = z.object({
@@ -38,9 +24,7 @@ const refreshSchema = z.object({
 
 // Refresh token expiry: 90 days for WhatsApp-like persistent login
 const REFRESH_TOKEN_EXPIRY_DAYS = 90
-
-// TEST MODE: Set to true to skip Twilio and use PIN 123456
-const TEST_MODE = true
+const BCRYPT_SALT_ROUNDS = 10
 
 // Generate a secure random token
 function generateRefreshToken(): string {
@@ -54,168 +38,105 @@ function getRefreshTokenExpiry(): Date {
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
   /**
-   * POST /api/auth/request-otp - Request OTP for phone number
+   * POST /api/auth/register - Register new user with phone + PIN
    */
-  fastify.post('/request-otp', async (request, reply) => {
-    const body = requestOtpSchema.parse(request.body)
+  fastify.post('/register', async (request, reply) => {
+    const body = registerSchema.parse(request.body)
     const phone = body.phone.startsWith('+') ? body.phone : `+${body.phone}`
 
-    // TEST MODE: Skip Twilio, just accept any phone
-    if (TEST_MODE) {
-      fastify.log.info(`TEST MODE - Use PIN 123456 for ${phone}`)
-      return {
-        success: true,
-        data: {
-          message: 'Use PIN: 123456',
-          expiresIn: OTP_EXPIRY_MINUTES * 60,
-          testMode: true,
-        },
-      }
+    // Check if user already exists
+    const existing = await prisma.user.findUnique({ where: { phone } })
+    if (existing) {
+      throw new AppError('Phone number already registered', 409, 'USER_EXISTS')
     }
 
-    // Production: Send OTP via Twilio Verify Service
-    const client = getTwilioClient()
-    if (client && TWILIO_VERIFY_SERVICE_SID) {
-      try {
-        const verification = await client.verify.v2
-          .services(TWILIO_VERIFY_SERVICE_SID)
-          .verifications.create({
-            to: phone,
-            channel: 'sms',
-          })
+    const hashedPassword = await bcrypt.hash(body.pin, BCRYPT_SALT_ROUNDS)
 
-        fastify.log.info(`Twilio Verify sent to ${phone}, status: ${verification.status}`)
+    // First user ever becomes SUPER_ADMIN and is auto-approved
+    const userCount = await prisma.user.count()
+    const isFirstUser = userCount === 0
 
-        return {
-          success: true,
-          data: {
-            message: 'OTP sent successfully',
-            expiresIn: OTP_EXPIRY_MINUTES * 60,
-          },
-        }
-      } catch (error: any) {
-        fastify.log.error(`Failed to send OTP via Twilio Verify: ${error.message}`)
-        throw new AppError('Failed to send verification code. Please try again.', 500, 'OTP_SEND_FAILED')
-      }
-    } else {
-      throw new AppError('SMS service not configured', 500, 'SMS_NOT_CONFIGURED')
+    await prisma.user.create({
+      data: {
+        phone,
+        name: body.name,
+        password: hashedPassword,
+        role: isFirstUser ? 'SUPER_ADMIN' : 'STAFF',
+        isApproved: isFirstUser ? true : false,
+      },
+    })
+
+    return {
+      success: true,
+      data: { message: isFirstUser ? 'Account created as Super Admin' : 'Registration pending approval' },
     }
   })
 
   /**
-   * POST /api/auth/verify-otp - Verify OTP and login/register
+   * POST /api/auth/login - Login with phone + PIN
    */
-  fastify.post('/verify-otp', async (request, reply) => {
-    const body = verifyOtpSchema.parse(request.body)
+  fastify.post('/login', async (request, reply) => {
+    const body = loginSchema.parse(request.body)
     const phone = body.phone.startsWith('+') ? body.phone : `+${body.phone}`
 
-    // TEST MODE: Accept PIN 123456
-    if (TEST_MODE) {
-      if (body.otp !== '123456') {
-        throw new UnauthorizedError('Invalid PIN. Use 123456')
-      }
-      fastify.log.info(`TEST MODE - PIN verified for ${phone}`)
-    } else {
-      // Production: Verify OTP via Twilio Verify Service
-      const client = getTwilioClient()
-
-      if (client && TWILIO_VERIFY_SERVICE_SID) {
-        try {
-          const verificationCheck = await client.verify.v2
-            .services(TWILIO_VERIFY_SERVICE_SID)
-            .verificationChecks.create({
-              to: phone,
-              code: body.otp,
-            })
-
-          if (verificationCheck.status !== 'approved') {
-            throw new UnauthorizedError('Invalid or expired verification code')
-          }
-          fastify.log.info(`Twilio Verify approved for ${phone}`)
-        } catch (error: any) {
-          if (error instanceof UnauthorizedError) {
-            throw error
-          }
-          fastify.log.error(`Twilio Verify check failed: ${error.message}`)
-          throw new UnauthorizedError('Verification failed. Please try again.')
-        }
-      } else {
-        throw new AppError('SMS service not configured', 500, 'SMS_NOT_CONFIGURED')
-      }
+    const user = await prisma.user.findUnique({ where: { phone } })
+    if (!user) {
+      throw new UnauthorizedError('Invalid phone number or PIN')
     }
 
-    // Find or create user by phone (use normalized phone with + prefix)
-    let user = await prisma.user.findUnique({
-      where: { phone },
-    })
-
-    const isNewUser = !user || !user.isVerified || !user.name
-
-    // For new users, require name
-    if (isNewUser && !body.name) {
-      throw new AppError('Name is required for new users', 400, 'VALIDATION_ERROR')
+    const pinValid = await bcrypt.compare(body.pin, user.password)
+    if (!pinValid) {
+      throw new UnauthorizedError('Invalid phone number or PIN')
     }
 
-    // Create or update user (use normalized phone with + prefix)
-    const updatedUser = await prisma.user.upsert({
-      where: { phone },
-      update: {
-        isVerified: true,
-        ...(isNewUser && body.name ? { name: body.name } : {}),
-      },
-      create: {
-        phone,
-        name: body.name || '',
-        isVerified: true,
-      },
-    })
+    if (!user.isApproved) {
+      throw new ForbiddenError('Account pending approval')
+    }
 
-    // Generate access token (short-lived: 15 minutes)
+    // Generate access token
     const accessToken = fastify.jwt.sign({
-      id: updatedUser.id,
-      phone: updatedUser.phone,
-      name: updatedUser.name,
+      id: user.id,
+      phone: user.phone,
+      name: user.name,
     })
 
-    // Generate and store refresh token in database (long-lived: 90 days)
+    // Generate and store refresh token
     const refreshToken = generateRefreshToken()
     const expiresAt = getRefreshTokenExpiry()
-
-    // Get device info from user agent
     const deviceInfo = request.headers['user-agent'] || 'Unknown device'
 
     await prisma.refreshToken.create({
       data: {
         token: refreshToken,
-        userId: updatedUser.id,
+        userId: user.id,
         deviceInfo,
         expiresAt,
       },
     })
 
-    // Set refresh token as httpOnly cookie
     reply.setCookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/api/auth',
-      maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60, // 90 days in seconds
+      maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60,
     })
 
     return {
       success: true,
       data: {
         user: {
-          id: updatedUser.id,
-          phone: updatedUser.phone,
-          name: updatedUser.name,
-          avatarUrl: updatedUser.avatarUrl,
-          isVerified: updatedUser.isVerified,
-          createdAt: updatedUser.createdAt,
+          id: user.id,
+          phone: user.phone,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+          emoji: user.emoji,
+          role: user.role,
+          isApproved: user.isApproved,
+          createdAt: user.createdAt,
         },
         accessToken,
         refreshToken,
-        isNewUser,
       },
     }
   })
@@ -227,15 +148,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const body = refreshSchema.parse(request.body)
     const { refreshToken } = body
 
-    // Find refresh token in database
     const tokenRecord = await prisma.refreshToken.findUnique({
       where: { token: refreshToken },
       include: { user: true },
     })
 
-    // Check if token exists and is not expired
     if (!tokenRecord || tokenRecord.expiresAt < new Date()) {
-      // Delete expired token if exists
       if (tokenRecord) {
         await prisma.refreshToken.delete({ where: { id: tokenRecord.id } })
       }
@@ -244,18 +162,15 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
     const user = tokenRecord.user
 
-    // Generate new access token
     const newAccessToken = fastify.jwt.sign({
       id: user.id,
       phone: user.phone,
       name: user.name,
     })
 
-    // Generate new refresh token (token rotation for security)
     const newRefreshToken = generateRefreshToken()
     const newExpiresAt = getRefreshTokenExpiry()
 
-    // Update refresh token in database (rotate token)
     await prisma.refreshToken.update({
       where: { id: tokenRecord.id },
       data: {
@@ -288,11 +203,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/logout', {
     preHandler: [authenticate],
   }, async (request, reply) => {
-    // Try to get refresh token from cookie or body
     const refreshToken = request.cookies.refreshToken || (request.body as any)?.refreshToken
 
     if (refreshToken) {
-      // Delete the refresh token from database
       await prisma.refreshToken.deleteMany({
         where: { token: refreshToken },
       })
@@ -327,9 +240,101 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         phone: user.phone,
         name: user.name,
         avatarUrl: user.avatarUrl,
-        isVerified: user.isVerified,
+        emoji: user.emoji,
+        role: user.role,
+        isApproved: user.isApproved,
         createdAt: user.createdAt,
       },
+    }
+  })
+
+  /**
+   * GET /api/auth/pending-users - List users pending approval (admin only)
+   */
+  fastify.get('/pending-users', {
+    preHandler: [authenticate],
+  }, async (request) => {
+    // Check admin role
+    const currentUser = await prisma.user.findUnique({ where: { id: request.user.id } })
+    if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN')) {
+      throw new ForbiddenError('Admin access required')
+    }
+
+    const pendingUsers = await prisma.user.findMany({
+      where: { isApproved: false },
+      select: {
+        id: true,
+        phone: true,
+        name: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    return {
+      success: true,
+      data: pendingUsers,
+    }
+  })
+
+  /**
+   * POST /api/auth/approve-user/:id - Approve a pending user (admin only)
+   */
+  fastify.post('/approve-user/:id', {
+    preHandler: [authenticate],
+  }, async (request) => {
+    const currentUser = await prisma.user.findUnique({ where: { id: request.user.id } })
+    if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN')) {
+      throw new ForbiddenError('Admin access required')
+    }
+
+    const { id } = request.params as { id: string }
+
+    const targetUser = await prisma.user.findUnique({ where: { id } })
+    if (!targetUser) {
+      throw new AppError('User not found', 404, 'NOT_FOUND')
+    }
+    if (targetUser.isApproved) {
+      throw new AppError('User is already approved', 400, 'ALREADY_APPROVED')
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: { isApproved: true },
+    })
+
+    return {
+      success: true,
+      data: { message: `User ${user.name} approved` },
+    }
+  })
+
+  /**
+   * POST /api/auth/reject-user/:id - Reject (delete) a pending user (admin only)
+   */
+  fastify.post('/reject-user/:id', {
+    preHandler: [authenticate],
+  }, async (request) => {
+    const currentUser = await prisma.user.findUnique({ where: { id: request.user.id } })
+    if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN')) {
+      throw new ForbiddenError('Admin access required')
+    }
+
+    const { id } = request.params as { id: string }
+
+    const targetUser = await prisma.user.findUnique({ where: { id } })
+    if (!targetUser) {
+      throw new AppError('User not found', 404, 'NOT_FOUND')
+    }
+
+    await prisma.user.update({
+      where: { id },
+      data: { isApproved: false },
+    })
+
+    return {
+      success: true,
+      data: { message: 'User rejected' },
     }
   })
 
