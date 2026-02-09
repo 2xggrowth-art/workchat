@@ -37,7 +37,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   fetchMessages: async (chatId: string) => {
     try {
       const response = await api.get(`/api/chats/${chatId}/messages`)
-      const msgs = response.data.data || []
+      const msgs = (response.data.data || []).reverse()
       set((state) => ({
         messages: { ...state.messages, [chatId]: msgs },
       }))
