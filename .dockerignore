@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.env
+.env.*
+*.md
+.vscode
+.idea
+.github
+docs
+docker
+deploy.sh
