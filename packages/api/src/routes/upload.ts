@@ -134,6 +134,7 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
 
     if (useS3) {
       const url = await getFileUrl(key)
+      reply.header('Cross-Origin-Resource-Policy', 'cross-origin')
       return reply.redirect(302, url)
     }
 
@@ -152,6 +153,7 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
     reply.header('Content-Type', mimeType)
     reply.header('Content-Length', stat.size)
     reply.header('Cache-Control', 'public, max-age=31536000')
+    reply.header('Cross-Origin-Resource-Policy', 'cross-origin')
 
     return reply.send(getLocalFileStream(filepath))
   })
@@ -214,6 +216,7 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
     reply.header('Content-Type', mimeType)
     reply.header('Content-Length', stat.size)
     reply.header('Cache-Control', 'public, max-age=31536000')
+    reply.header('Cross-Origin-Resource-Policy', 'cross-origin')
 
     return reply.send(getLocalFileStream(filepath))
   })
