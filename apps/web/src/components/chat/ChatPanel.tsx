@@ -8,6 +8,7 @@ import { formatMessageTime, formatMessageDate, MessageType, TaskStatus, TASK_STA
 import ConvertToTaskModal from './ConvertToTaskModal'
 import TaskDetailsPanel from '../task/TaskDetailsPanel'
 import VoiceRecorder from './VoiceRecorder'
+import VoiceNotePlayer from './VoiceNotePlayer'
 
 export default function ChatPanel() {
   const { chatId } = useParams<{ chatId: string }>()
@@ -77,9 +78,7 @@ export default function ChatPanel() {
     mutationFn: async (file: File | Blob) => {
       const formData = new FormData()
       formData.append('file', file, file instanceof File ? file.name : 'voice-note.webm')
-      const response = await api.post('/api/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const response = await api.post('/api/upload', formData)
       return response.data.data
     },
   })
@@ -659,7 +658,7 @@ export default function ChatPanel() {
                         <video src={message.fileUrl} controls className="max-w-full rounded-md mb-1" />
                       )}
                       {message.type === MessageType.AUDIO && message.fileUrl && (
-                        <audio src={message.fileUrl} controls className="w-full mb-1" />
+                        <VoiceNotePlayer src={message.fileUrl} isSent={isSent} />
                       )}
                       {message.type === MessageType.FILE && message.fileUrl && (
                         <a href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[#128C7E] hover:underline text-sm mb-1">

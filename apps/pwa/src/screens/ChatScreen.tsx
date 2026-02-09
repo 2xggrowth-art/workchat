@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { ChevronLeft, Plus, Send, Phone, FileText, X, Mic, Square, Search, Filter } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import TaskCard from '../components/TaskCard'
+import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { Chat, ChatType, Message, MessageType, TaskStatus } from '../types'
 import { useAuthStore } from '../stores/authStore'
 import { useChatStore } from '../stores/chatStore'
@@ -166,9 +167,7 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const uploadRes = await api.post('/api/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const uploadRes = await api.post('/api/upload', formData)
       const { url } = uploadRes.data.data
       const type = file.type.startsWith('image/') ? MessageType.IMAGE
         : file.type.startsWith('video/') ? MessageType.VIDEO
@@ -206,9 +205,7 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
         try {
           const formData = new FormData()
           formData.append('file', blob, 'voice-note.webm')
-          const uploadRes = await api.post('/api/upload', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          })
+          const uploadRes = await api.post('/api/upload', formData)
           const { url } = uploadRes.data.data
           const response = await api.post(`/api/chats/${chat.id}/messages`, {
             content: 'Voice note',
@@ -487,7 +484,7 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
                       ) : msg.type === MessageType.VIDEO && msg.fileUrl ? (
                         <video src={msg.fileUrl} controls className="max-w-full rounded-lg" />
                       ) : msg.type === MessageType.AUDIO && msg.fileUrl ? (
-                        <audio src={msg.fileUrl} controls className="w-full" />
+                        <VoiceNotePlayer src={msg.fileUrl} />
                       ) : msg.type === MessageType.FILE && msg.fileUrl ? (
                         <a href={msg.fileUrl} download className="flex items-center gap-1.5 text-blue-500 underline">
                           <FileText size={16} />

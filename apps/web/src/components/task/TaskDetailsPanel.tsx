@@ -72,9 +72,7 @@ export default function TaskDetailsPanel({ taskId, chatId, onClose }: TaskDetail
     mutationFn: async (file: File) => {
       const formData = new FormData()
       formData.append('file', file)
-      const uploadRes = await api.post('/api/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const uploadRes = await api.post('/api/upload', formData)
       const { url } = uploadRes.data.data
       const type = file.type.startsWith('image/') ? 'IMAGE'
         : file.type.startsWith('video/') ? 'VIDEO'

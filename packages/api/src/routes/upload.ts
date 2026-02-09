@@ -114,9 +114,7 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
    * For S3: redirects to a presigned URL
    * For local: serves the file directly
    */
-  fastify.get('/file/*', {
-    preHandler: [authenticate],
-  }, async (request, reply) => {
+  fastify.get('/file/*', async (request, reply) => {
     const { '*': key } = request.params as { '*': string }
 
     if (!key) {
@@ -162,9 +160,7 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
    * GET /api/upload/url/:key - Get presigned URL for a file
    * Returns JSON with the URL instead of redirecting
    */
-  fastify.get('/url/*', {
-    preHandler: [authenticate],
-  }, async (request, reply) => {
+  fastify.get('/url/*', async (request, reply) => {
     const { '*': key } = request.params as { '*': string }
 
     if (!key) {
@@ -192,9 +188,7 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * Legacy: GET /api/upload/:filename - Serve uploaded file (backward compat for old local uploads)
    */
-  fastify.get('/:filename', {
-    preHandler: [authenticate],
-  }, async (request, reply) => {
+  fastify.get('/:filename', async (request, reply) => {
     const { filename } = request.params as { filename: string }
 
     // Prevent directory traversal

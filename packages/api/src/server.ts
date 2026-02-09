@@ -20,6 +20,14 @@ import { startScheduler, stopScheduler } from './services/scheduler'
 
 const PORT = parseInt(process.env.PORT || '3000', 10)
 const HOST = process.env.HOST || '0.0.0.0'
+const corsOrigins = process.env.NODE_ENV === 'production'
+  ? (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(s => s.trim())
+  : [
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
+      'http://localhost:5177',
+    ]
 
 async function buildServer() {
   const fastify = Fastify({
@@ -33,14 +41,7 @@ async function buildServer() {
 
   // Register plugins
   await fastify.register(cors, {
-    origin: process.env.NODE_ENV === 'production'
-      ? process.env.CORS_ORIGIN || 'http://localhost:5173'
-      : [
-          'http://localhost:5173',
-          'http://localhost:5174',
-          'http://localhost:5175',
-          'http://localhost:5177',
-        ],
+    origin: corsOrigins,
     credentials: true,
   })
 
@@ -108,14 +109,7 @@ async function start() {
   // Setup Socket.io with Fastify's server
   const io = new SocketServer(fastify.server, {
     cors: {
-      origin: process.env.NODE_ENV === 'production'
-        ? (process.env.CORS_ORIGIN || 'http://localhost:5173')
-        : [
-            'http://localhost:5173',
-            'http://localhost:5174',
-            'http://localhost:5175',
-            'http://localhost:5177',
-          ],
+      origin: corsOrigins,
       credentials: true,
     },
     transports: ['websocket', 'polling'],
