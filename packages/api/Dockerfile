@@ -29,6 +29,9 @@ RUN pnpm --filter @workchat/shared build
 # Build API
 RUN pnpm --filter @workchat/api build
 
+# Make entrypoint executable
+RUN chmod +x /app/packages/api/entrypoint.sh
+
 # Set working directory to api
 WORKDIR /app/packages/api
 
@@ -36,8 +39,8 @@ WORKDIR /app/packages/api
 EXPOSE 3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
 # Run migrations then start
-CMD npx prisma migrate deploy --schema=/app/packages/database/prisma/schema.prisma && node dist/server.js
+ENTRYPOINT ["/app/packages/api/entrypoint.sh"]
