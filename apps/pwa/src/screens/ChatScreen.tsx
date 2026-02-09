@@ -468,8 +468,8 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
                     <div
                       className={`max-w-[78%] px-2 py-1.5 rounded-xl text-[16px] leading-[1.35] break-words ${
                         isSent
-                          ? 'bg-sent dark:bg-[#056162] rounded-tr-sm'
-                          : 'bg-white dark:bg-[#1C1C1E] rounded-tl-sm'
+                          ? 'bg-sent dark:bg-[#056162] dark:text-white rounded-tr-sm'
+                          : 'bg-white dark:bg-[#202C33] dark:text-[#E9EDEF] rounded-tl-sm'
                       }`}
                       onContextMenu={(e) => handleContextMenu(e, msg.id, false, msg.content || '')}
                       onTouchStart={(e) => startLongPress(e, msg.id, false, msg.content || '')}
