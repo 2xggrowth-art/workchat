@@ -29,9 +29,8 @@ RUN pnpm --filter @workchat/shared build
 # Build API
 RUN pnpm --filter @workchat/api build
 
-# Copy entrypoint script
-COPY packages/api/docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+# Create entrypoint inline
+RUN printf '#!/bin/sh\nset -e\necho "Running Prisma migrations..."\ncd /app/packages/database\nnpx prisma migrate deploy\nif [ "$SEED_DB" = "true" ]; then\n  echo "Seeding database..."\n  npx prisma db seed\nfi\necho "Starting API server..."\ncd /app/packages/api\nexec node dist/server.js\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Set working directory to api
 WORKDIR /app/packages/api
@@ -43,4 +42,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
-CMD ["/app/docker-entrypoint.sh"]
+CMD ["/app/entrypoint.sh"]
