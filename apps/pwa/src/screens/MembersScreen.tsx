@@ -80,7 +80,7 @@ export default function MembersScreen({ onBack }: MembersScreenProps) {
 
   return (
     <div className="absolute inset-0 bg-gray-100 dark:bg-[#1a1a1a] z-[100] flex flex-col">
-      <IOSNav title="Members" leftIcon={<ChevronLeft />} onLeftClick={onBack} />
+      <IOSNav title="Members" left={<button onClick={onBack} className="text-teal flex items-center gap-0.5 text-[17px]"><ChevronLeft size={20} /> Back</button>} />
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {loading ? (
           <div className="flex items-center justify-center h-32">
