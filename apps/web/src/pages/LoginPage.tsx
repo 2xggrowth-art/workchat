@@ -25,8 +25,8 @@ export default function LoginPage() {
   useEffect(() => {
     const path = window.location.pathname
     const match = path.match(/\/join\/([A-Za-z0-9-]+)/)
-    if (match) {
-      const code = match[1]
+    if (match && match[1]) {
+      const code = match[1]!
       setOrgCode(code)
       setOrgLocked(true)
       setMode('register')
