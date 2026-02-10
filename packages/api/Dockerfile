@@ -29,8 +29,8 @@ RUN pnpm --filter @workchat/shared build
 # Build API
 RUN pnpm --filter @workchat/api build
 
-# Create entrypoint inline
-RUN printf '#!/bin/sh\nset -e\necho "Running Prisma migrations..."\ncd /app/packages/database\nnpx prisma migrate deploy\nif [ "$SEED_DB" = "true" ]; then\n  echo "Seeding database..."\n  npx prisma db seed\nfi\necho "Starting API server..."\ncd /app/packages/api\nexec node dist/server.js\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+# Run migrations at build time (DB must be accessible during build)
+# RUN cd /app/packages/database && npx prisma migrate deploy
 
 # Set working directory to api
 WORKDIR /app/packages/api
@@ -38,8 +38,9 @@ WORKDIR /app/packages/api
 # Expose port
 EXPOSE 3000
 
-# Health check - generous start period for migrations
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
-CMD ["/app/entrypoint.sh"]
+# Start command - run from packages/api with access to node_modules
+CMD ["node", "dist/server.js"]

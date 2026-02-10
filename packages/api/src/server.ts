@@ -18,6 +18,7 @@ import { orgRoutes } from './routes/org'
 import { setupSocketHandlers } from './socket'
 import { errorHandler } from './middleware/errorHandler'
 import { startScheduler, stopScheduler } from './services/scheduler'
+import { execSync } from 'child_process'
 
 const PORT = parseInt(process.env.PORT || '3000', 10)
 const HOST = process.env.HOST || '0.0.0.0'
@@ -106,7 +107,37 @@ async function buildServer() {
   return fastify
 }
 
+async function runMigrations() {
+  try {
+    console.log('Running Prisma migrations...')
+    execSync('npx prisma migrate deploy', {
+      cwd: '/app/packages/database',
+      stdio: 'inherit',
+      timeout: 30000,
+    })
+    console.log('Migrations completed.')
+
+    if (process.env.SEED_DB === 'true') {
+      console.log('Seeding database...')
+      execSync('npx prisma db seed', {
+        cwd: '/app/packages/database',
+        stdio: 'inherit',
+        timeout: 60000,
+      })
+      console.log('Seeding completed.')
+    }
+  } catch (err) {
+    console.error('Migration/seed failed:', err)
+    // Don't crash — server might still work with existing schema
+  }
+}
+
 async function start() {
+  // Run migrations before starting server (production only)
+  if (process.env.NODE_ENV === 'production') {
+    await runMigrations()
+  }
+
   const fastify = await buildServer()
 
   // Setup Socket.io with Fastify's server
