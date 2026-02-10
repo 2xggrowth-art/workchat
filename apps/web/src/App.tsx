@@ -29,6 +29,7 @@ function App() {
     <div className="h-screen bg-[#f0f2f5] dark:bg-[#111B21]">
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/join/:code" element={<LoginPage />} />
         <Route
           path="/*"
           element={

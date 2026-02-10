@@ -10,8 +10,11 @@ import {
   RefreshControl,
   Modal,
   Pressable,
+  Share,
+  Clipboard,
+  Platform,
 } from 'react-native'
-import { useFocusEffect } from '@react-navigation/native'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { useAuthStore } from '../stores/authStore'
 import { useTheme } from '../contexts/ThemeContext'
 import { api } from '../services/api'
@@ -33,13 +36,19 @@ const EMOJI_OPTIONS = [
 export default function ProfileScreen() {
   const { user, logout, setUser } = useAuthStore()
   const { mode, setMode, colors, isDark } = useTheme()
+  const navigation = useNavigation<any>()
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN'
 
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([])
   const [loadingPending, setLoadingPending] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [selectedEmoji, setSelectedEmoji] = useState<string | null>((user as any)?.emoji || null)
+  const [orgCode, setOrgCode] = useState('')
+  const [inviteLink, setInviteLink] = useState('')
+  const [orgName, setOrgName] = useState('')
+  const [regenerating, setRegenerating] = useState(false)
 
   const fetchPendingUsers = async () => {
     if (!isAdmin) return
@@ -60,6 +69,16 @@ export default function ProfileScreen() {
       fetchPendingUsers()
     }
   }, [])
+
+  useEffect(() => {
+    if (isAdmin) {
+      api.get('/api/org/settings').then((res) => {
+        setOrgCode(res.data.data.orgCode)
+        setInviteLink(res.data.data.inviteLink)
+        setOrgName(res.data.data.name)
+      }).catch(() => {})
+    }
+  }, [isAdmin])
 
   useFocusEffect(
     useCallback(() => {
@@ -105,6 +124,40 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('Failed to save emoji:', error)
     }
+  }
+
+  const handleShareInvite = async () => {
+    try {
+      await Share.share({
+        message: `Join ${orgName} on WorkChat: ${inviteLink}`,
+      })
+    } catch {}
+  }
+
+  const handleCopyCode = () => {
+    Clipboard.setString(orgCode)
+    Alert.alert('Copied', 'Organization code copied to clipboard')
+  }
+
+  const handleRegenerate = () => {
+    Alert.alert('Regenerate Code', 'The old code will stop working. Continue?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Regenerate',
+        onPress: async () => {
+          setRegenerating(true)
+          try {
+            const res = await api.post('/api/org/regenerate-code')
+            setOrgCode(res.data.data.orgCode)
+            setInviteLink(res.data.data.inviteLink)
+          } catch (err: any) {
+            Alert.alert('Error', err.response?.data?.error?.message || 'Failed to regenerate')
+          } finally {
+            setRegenerating(false)
+          }
+        },
+      },
+    ])
   }
 
   const handleLogout = () => {
@@ -194,6 +247,39 @@ export default function ProfileScreen() {
             ))}
           </View>
         )}
+
+        {/* Organization Section (Admin only) */}
+        {isAdmin && orgCode ? (
+          <View style={[styles.section, { backgroundColor: colors.surface }]}>
+            <Text style={styles.sectionTitle}>Organization</Text>
+            <TouchableOpacity style={styles.menuItem} onPress={handleCopyCode}>
+              <Text style={[styles.menuIcon, { color: colors.textMuted }]}>O</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.menuText, { color: colors.textSecondary }]}>{orgName}</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>{orgCode}</Text>
+              </View>
+              <Text style={[styles.menuValue, { color: colors.primary }]}>Copy</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={handleShareInvite}>
+              <Text style={[styles.menuIcon, { color: '#4CAF50' }]}>S</Text>
+              <Text style={[styles.menuText, { flex: 1, color: colors.textSecondary }]}>Share Invite Link</Text>
+              <Text style={[styles.menuArrow, { color: colors.textMuted }]}>{'>'}</Text>
+            </TouchableOpacity>
+            {isSuperAdmin && (
+              <TouchableOpacity style={styles.menuItem} onPress={handleRegenerate} disabled={regenerating}>
+                <Text style={[styles.menuIcon, { color: '#FF9800' }]}>R</Text>
+                <Text style={[styles.menuText, { flex: 1, color: colors.textSecondary }]}>
+                  {regenerating ? 'Regenerating...' : 'Regenerate Code'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Members')}>
+              <Text style={[styles.menuIcon, { color: '#9C27B0' }]}>M</Text>
+              <Text style={[styles.menuText, { flex: 1, color: colors.textSecondary }]}>Manage Members</Text>
+              <Text style={[styles.menuArrow, { color: colors.textMuted }]}>{'>'}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {/* Account Section */}
         <View style={[styles.section, { backgroundColor: colors.surface }]}>

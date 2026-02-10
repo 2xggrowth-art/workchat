@@ -90,6 +90,7 @@ export const GROUP_PERMISSIONS: Record<ChatMemberRole, GroupPermission[]> = {
 // ============================================
 
 export const APP_NAME = 'WorkChat'
+export const INVITE_LINK_BASE = 'https://workchat.2xg.in/join'
 
 export const MESSAGE_TYPES_WITH_FILE = ['AUDIO', 'IMAGE', 'VIDEO', 'FILE'] as const
 

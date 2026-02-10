@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@workchat/database'
 import { ChatType, ChatMemberRole } from '@workchat/shared'
 import { authenticate } from '../middleware/auth'
-import { NotFoundError, ForbiddenError } from '../middleware/errorHandler'
+import { NotFoundError, ForbiddenError, AppError } from '../middleware/errorHandler'
 
 // Validation schemas
 const userIdParamsSchema = z.object({
@@ -42,13 +42,18 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     const { query } = searchSchema.parse(request.query)
     const currentUserId = request.user.id
 
+    // Look up current user to get orgId
+    const currentUser = await prisma.user.findUnique({ where: { id: currentUserId } })
+    if (!currentUser) throw new NotFoundError('User')
+
     const users = await prisma.user.findMany({
       where: {
         OR: [
           { name: { contains: query, mode: 'insensitive' } },
           { phone: { contains: query } },
         ],
-        isApproved: true,
+        status: 'ACTIVE',
+        orgId: currentUser.orgId,
         id: { not: currentUserId }, // Exclude self
       },
       select: {
@@ -78,11 +83,19 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     const { phone } = phoneSearchSchema.parse(request.query)
     const currentUserId = request.user.id
 
+    // Look up current user to get orgId
+    const currentUser = await prisma.user.findUnique({ where: { id: currentUserId } })
+    if (!currentUser) throw new NotFoundError('User')
+
     // Normalize phone number
     const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`
 
-    const user = await prisma.user.findUnique({
-      where: { phone: normalizedPhone },
+    const user = await prisma.user.findFirst({
+      where: {
+        phone: normalizedPhone,
+        status: 'ACTIVE',
+        orgId: currentUser.orgId,
+      },
       select: {
         id: true,
         phone: true,
@@ -121,7 +134,11 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       throw new ForbiddenError('Cannot start chat with yourself')
     }
 
-    // Verify target user exists
+    // Look up current user to get orgId
+    const currentUser = await prisma.user.findUnique({ where: { id: currentUserId } })
+    if (!currentUser) throw new NotFoundError('User')
+
+    // Verify target user exists and is in same org
     const targetUser = await prisma.user.findUnique({
       where: { id: targetUserId },
       select: {
@@ -129,11 +146,19 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         phone: true,
         name: true,
         avatarUrl: true,
+        orgId: true,
+        status: true,
       },
     })
 
     if (!targetUser) {
       throw new NotFoundError('User')
+    }
+    if (targetUser.orgId !== currentUser.orgId) {
+      throw new AppError('User not found in your organization', 404, 'NOT_FOUND')
+    }
+    if (targetUser.status !== 'ACTIVE') {
+      throw new AppError('User is not active', 400, 'USER_NOT_ACTIVE')
     }
 
     // Check if direct chat already exists between these two users
@@ -210,6 +235,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         type: ChatType.DIRECT,
         name: targetUser.name, // Chat name shows target user's name
         createdBy: currentUserId,
+        orgId: currentUser.orgId,
         members: {
           createMany: {
             data: [
@@ -268,17 +294,22 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     const { phones } = matchContactsSchema.parse(request.body)
     const currentUserId = request.user.id
 
+    // Look up current user to get orgId
+    const currentUser = await prisma.user.findUnique({ where: { id: currentUserId } })
+    if (!currentUser) throw new NotFoundError('User')
+
     // Normalize phone numbers (add + prefix if missing)
     const normalizedPhones = phones.map((phone) => {
       const cleaned = phone.replace(/[\s\-()]/g, '')
       return cleaned.startsWith('+') ? cleaned : `+${cleaned}`
     })
 
-    // Find users matching these phone numbers (exclude self)
+    // Find users matching these phone numbers (exclude self, same org only)
     const users = await prisma.user.findMany({
       where: {
         phone: { in: normalizedPhones },
-        isApproved: true,
+        status: 'ACTIVE',
+        orgId: currentUser.orgId,
         id: { not: currentUserId },
       },
       select: {

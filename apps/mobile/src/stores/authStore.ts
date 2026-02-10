@@ -9,7 +9,8 @@ interface User {
   name: string
   avatarUrl: string | null
   role: 'SUPER_ADMIN' | 'ADMIN' | 'STAFF'
-  isApproved: boolean
+  status: 'PENDING' | 'ACTIVE' | 'SUSPENDED'
+  orgId: string
   createdAt: string
 }
 
@@ -23,7 +24,7 @@ interface AuthState {
   // Actions
   initialize: () => Promise<void>
   login: (phone: string, pin: string) => Promise<void>
-  register: (phone: string, pin: string, name: string) => Promise<{ message: string }>
+  register: (phone: string, pin: string, name: string, orgCode: string) => Promise<{ message: string }>
   logout: () => Promise<void>
   setUser: (user: User) => void
 }
@@ -123,10 +124,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  register: async (phone: string, pin: string, name: string) => {
+  register: async (phone: string, pin: string, name: string, orgCode: string) => {
     set({ isLoading: true })
     try {
-      const response = await api.post('/api/auth/register', { phone, pin, name })
+      const response = await api.post('/api/auth/register', { phone, pin, name, orgCode })
       set({ isLoading: false })
       return response.data.data
     } catch (error) {

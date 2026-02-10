@@ -14,6 +14,7 @@ import { chatRoutes } from './routes/chats'
 import { messageRoutes } from './routes/messages'
 import { taskRoutes } from './routes/tasks'
 import { uploadRoutes } from './routes/upload'
+import { orgRoutes } from './routes/org'
 import { setupSocketHandlers } from './socket'
 import { errorHandler } from './middleware/errorHandler'
 import { startScheduler, stopScheduler } from './services/scheduler'
@@ -100,6 +101,7 @@ async function buildServer() {
   await fastify.register(messageRoutes, { prefix: '/api' })  // Routes already have /chats/:id/messages paths
   await fastify.register(taskRoutes, { prefix: '/api/tasks' })
   await fastify.register(uploadRoutes, { prefix: '/api/upload' })
+  await fastify.register(orgRoutes, { prefix: '/api/org' })
 
   return fastify
 }

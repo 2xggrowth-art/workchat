@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
+import { api } from '../services/api'
 
 type Mode = 'login' | 'register' | 'pending'
 
@@ -12,8 +13,50 @@ export default function LoginPage() {
   const [phone, setPhone] = useState('')
   const [pin, setPin] = useState('')
   const [name, setName] = useState('')
+  const [orgCode, setOrgCode] = useState('')
+  const [orgName, setOrgName] = useState('')
+  const [orgError, setOrgError] = useState('')
+  const [orgLocked, setOrgLocked] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const resolveTimeout = useRef<ReturnType<typeof setTimeout>>()
+
+  // Handle invite link: /join/WRK4829
+  useEffect(() => {
+    const path = window.location.pathname
+    const match = path.match(/\/join\/([A-Za-z0-9-]+)/)
+    if (match) {
+      const code = match[1]
+      setOrgCode(code)
+      setOrgLocked(true)
+      setMode('register')
+      resolveOrgCode(code)
+    }
+  }, [])
+
+  const resolveOrgCode = async (code: string) => {
+    if (!code || code.length < 3) {
+      setOrgName('')
+      setOrgError('')
+      return
+    }
+    try {
+      const res = await api.get(`/api/auth/resolve-org/${code}`)
+      setOrgName(res.data.data.name)
+      setOrgError('')
+    } catch {
+      setOrgName('')
+      setOrgError('Invalid organization code')
+    }
+  }
+
+  const handleOrgCodeChange = (value: string) => {
+    setOrgCode(value)
+    setOrgName('')
+    setOrgError('')
+    if (resolveTimeout.current) clearTimeout(resolveTimeout.current)
+    resolveTimeout.current = setTimeout(() => resolveOrgCode(value), 500)
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -51,7 +94,7 @@ export default function LoginPage() {
     }
 
     try {
-      await register(formattedPhone, pin, name.trim())
+      await register(formattedPhone, pin, name.trim(), orgCode)
       setMode('pending')
     } catch (err: any) {
       setError(err.response?.data?.error?.message || err.response?.data?.message || 'Registration failed')
@@ -140,6 +183,23 @@ export default function LoginPage() {
           </form>
         ) : (
           <form onSubmit={handleRegister} className="space-y-4">
+            <div>
+              <input
+                type="text"
+                value={orgCode}
+                onChange={(e) => handleOrgCodeChange(e.target.value.toUpperCase())}
+                placeholder="Organization Code (e.g. WRK-1234)"
+                disabled={orgLocked}
+                className="w-full px-4 py-3.5 border-[1.5px] border-gray-200 rounded-lg text-[15px] outline-none focus:border-[#128C7E] transition-colors bg-white text-gray-900 disabled:opacity-60"
+                required
+              />
+              {orgName && (
+                <p className="text-green-600 text-xs mt-1 text-left px-1">{orgName}</p>
+              )}
+              {orgError && (
+                <p className="text-red-500 text-xs mt-1 text-left px-1">{orgError}</p>
+              )}
+            </div>
             <input
               type="text"
               value={name}
@@ -169,7 +229,7 @@ export default function LoginPage() {
             />
             <button
               type="submit"
-              disabled={loading || !phone || !pin || !name.trim()}
+              disabled={loading || !phone || !pin || !name.trim() || !orgCode || !!orgError}
               className="w-full py-3.5 bg-[#25D366] text-white rounded-lg font-semibold text-base hover:bg-[#1da851] transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             >
               {loading ? 'Registering...' : 'Register'}

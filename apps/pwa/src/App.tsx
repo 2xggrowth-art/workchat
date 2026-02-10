@@ -15,10 +15,11 @@ import NewGroupScreen from './screens/NewGroupScreen'
 import GroupInfoScreen from './screens/GroupInfoScreen'
 import ApproveUsersScreen from './screens/ApproveUsersScreen'
 import ProfileScreen from './screens/ProfileScreen'
+import MembersScreen from './screens/MembersScreen'
 import AdminSummarySheet from './screens/AdminSummarySheet'
 import { Chat } from './types'
 
-type Screen = 'main' | 'chat' | 'newChat' | 'newGroup' | 'groupInfo' | 'approveUsers' | 'profile'
+type Screen = 'main' | 'chat' | 'newChat' | 'newGroup' | 'groupInfo' | 'approveUsers' | 'profile' | 'members'
 
 export default function App() {
   const { user, token } = useAuthStore()
@@ -73,6 +74,7 @@ export default function App() {
           <SettingsScreen
             onApproveUsers={() => setScreen('approveUsers')}
             onProfile={() => setScreen('profile')}
+            onManageMembers={() => setScreen('members')}
           />
         </div>
       </div>
@@ -126,6 +128,11 @@ export default function App() {
       {/* Profile screen */}
       {screen === 'profile' && (
         <ProfileScreen onBack={() => setScreen('main')} />
+      )}
+
+      {/* Members screen */}
+      {screen === 'members' && (
+        <MembersScreen onBack={() => setScreen('main')} />
       )}
 
       {/* Task Detail sheet */}

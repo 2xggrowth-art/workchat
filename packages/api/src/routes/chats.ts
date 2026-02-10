@@ -203,6 +203,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         type: body.type,
         name: chatName,
         createdBy: userId,
+        orgId: currentUser!.orgId,
         members: {
           createMany: {
             data: memberIds.map((id, index) => ({

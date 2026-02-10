@@ -11,6 +11,7 @@ const registerSchema = z.object({
   phone: z.string().min(10).max(15),
   name: z.string().min(1).max(100),
   pin: z.string().regex(/^\d{4,6}$/, 'PIN must be 4-6 digits'),
+  orgCode: z.string().min(3).max(10),
 })
 
 const loginSchema = z.object({
@@ -50,25 +51,37 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       throw new AppError('Phone number already registered', 409, 'USER_EXISTS')
     }
 
+    // Look up organization by orgCode (try exact match first, then with hyphen removed)
+    let org = await prisma.organization.findUnique({ where: { orgCode: body.orgCode } })
+    if (!org) {
+      // Try matching with hyphen stripped (e.g., "WRK4829" matches "WRK-4829")
+      const stripped = body.orgCode.replace(/-/g, '')
+      const allOrgs = await prisma.organization.findMany({
+        where: { orgCode: { not: body.orgCode } },
+      })
+      org = allOrgs.find((o) => o.orgCode.replace(/-/g, '') === stripped) || null
+    }
+    if (!org) {
+      throw new AppError('Invalid organization code', 400, 'INVALID_ORG_CODE')
+    }
+
     const hashedPassword = await bcrypt.hash(body.pin, BCRYPT_SALT_ROUNDS)
 
-    // First user ever becomes SUPER_ADMIN and is auto-approved
-    const userCount = await prisma.user.count()
-    const isFirstUser = userCount === 0
-
+    // All new registrations are STAFF with status PENDING
     await prisma.user.create({
       data: {
         phone,
         name: body.name,
         password: hashedPassword,
-        role: isFirstUser ? 'SUPER_ADMIN' : 'STAFF',
-        isApproved: isFirstUser ? true : false,
+        role: 'STAFF',
+        status: 'PENDING',
+        orgId: org.id,
       },
     })
 
     return {
       success: true,
-      data: { message: isFirstUser ? 'Account created as Super Admin' : 'Registration pending approval' },
+      data: { message: 'Registration pending approval' },
     }
   })
 
@@ -89,8 +102,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       throw new UnauthorizedError('Invalid phone number or PIN')
     }
 
-    if (!user.isApproved) {
-      throw new ForbiddenError('Account pending approval')
+    if (user.status !== 'ACTIVE') {
+      if (user.status === 'PENDING') {
+        throw new ForbiddenError('Account pending approval')
+      }
+      if (user.status === 'SUSPENDED') {
+        throw new ForbiddenError('Account suspended')
+      }
     }
 
     // Generate access token
@@ -132,7 +150,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           avatarUrl: user.avatarUrl,
           emoji: user.emoji,
           role: user.role,
-          isApproved: user.isApproved,
+          status: user.status,
+          orgId: user.orgId,
           createdAt: user.createdAt,
         },
         accessToken,
@@ -242,7 +261,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         avatarUrl: user.avatarUrl,
         emoji: user.emoji,
         role: user.role,
-        isApproved: user.isApproved,
+        status: user.status,
+        orgId: user.orgId,
         createdAt: user.createdAt,
       },
     }
@@ -261,7 +281,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const pendingUsers = await prisma.user.findMany({
-      where: { isApproved: false },
+      where: { status: 'PENDING', orgId: currentUser.orgId },
       select: {
         id: true,
         phone: true,
@@ -294,13 +314,16 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     if (!targetUser) {
       throw new AppError('User not found', 404, 'NOT_FOUND')
     }
-    if (targetUser.isApproved) {
+    if (targetUser.orgId !== currentUser.orgId) {
+      throw new AppError('User not found', 404, 'NOT_FOUND')
+    }
+    if (targetUser.status !== 'PENDING') {
       throw new AppError('User is already approved', 400, 'ALREADY_APPROVED')
     }
 
     const user = await prisma.user.update({
       where: { id },
-      data: { isApproved: true },
+      data: { status: 'ACTIVE', approvedBy: currentUser.id },
     })
 
     return {
@@ -326,15 +349,47 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     if (!targetUser) {
       throw new AppError('User not found', 404, 'NOT_FOUND')
     }
+    if (targetUser.orgId !== currentUser.orgId) {
+      throw new AppError('User not found', 404, 'NOT_FOUND')
+    }
 
-    await prisma.user.update({
+    await prisma.user.delete({
       where: { id },
-      data: { isApproved: false },
     })
 
     return {
       success: true,
-      data: { message: 'User rejected' },
+      data: { message: 'User rejected and removed' },
+    }
+  })
+
+  /**
+   * GET /api/auth/resolve-org/:code - Resolve org code to org name (public, no auth)
+   * Used for invite link pre-fill on the registration page
+   */
+  fastify.get('/resolve-org/:code', async (request) => {
+    const { code } = request.params as { code: string }
+
+    // Try exact match first
+    let org = await prisma.organization.findUnique({ where: { orgCode: code } })
+
+    if (!org) {
+      // Try matching with hyphen inserted (e.g., "WRK4829" -> "WRK-4829")
+      const stripped = code.replace(/-/g, '')
+      const allOrgs = await prisma.organization.findMany()
+      org = allOrgs.find((o) => o.orgCode.replace(/-/g, '') === stripped) || null
+    }
+
+    if (!org) {
+      throw new AppError('Organization not found', 404, 'ORG_NOT_FOUND')
+    }
+
+    return {
+      success: true,
+      data: {
+        name: org.name,
+        orgCode: org.orgCode,
+      },
     }
   })
 

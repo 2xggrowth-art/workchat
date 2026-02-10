@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, ChatType, MessageType, TaskStatus, TaskPriority } from '@prisma/client'
+import { PrismaClient, UserRole, UserStatus, ChatType, MessageType, TaskStatus, TaskPriority } from '@prisma/client'
 import { hash } from 'bcrypt'
 
 const prisma = new PrismaClient()
@@ -11,15 +11,30 @@ async function main() {
   await prisma.taskProof.deleteMany()
   await prisma.taskStep.deleteMany()
   await prisma.task.deleteMany()
+  await prisma.messageRead.deleteMany()
   await prisma.message.deleteMany()
   await prisma.chatMember.deleteMany()
   await prisma.chat.deleteMany()
+  await prisma.refreshToken.deleteMany()
   await prisma.user.deleteMany()
+  await prisma.organization.deleteMany()
 
   console.log('🧹 Cleaned existing data')
 
   // Hash PINs
   const pinHash = await hash('1234', 12)
+
+  // ============================================
+  // CREATE ORGANIZATION
+  // ============================================
+
+  const org = await prisma.organization.create({
+    data: {
+      name: 'Demo Company',
+      orgCode: 'WRK-1234',
+    },
+  })
+  console.log('🏢 Created Organization:', org.name, `(Code: ${org.orgCode})`)
 
   // ============================================
   // CREATE USERS
@@ -31,7 +46,8 @@ async function main() {
       password: pinHash,
       name: 'Super Admin',
       role: UserRole.SUPER_ADMIN,
-      isApproved: true,
+      status: UserStatus.ACTIVE,
+      orgId: org.id,
     },
   })
   console.log('👑 Created Super Admin:', superAdmin.name)
@@ -42,7 +58,8 @@ async function main() {
       password: pinHash,
       name: 'Rajesh Kumar',
       role: UserRole.ADMIN,
-      isApproved: true,
+      status: UserStatus.ACTIVE,
+      orgId: org.id,
     },
   })
 
@@ -52,7 +69,8 @@ async function main() {
       password: pinHash,
       name: 'Priya Sharma',
       role: UserRole.ADMIN,
-      isApproved: true,
+      status: UserStatus.ACTIVE,
+      orgId: org.id,
     },
   })
   console.log('👔 Created 2 Admins')
@@ -63,7 +81,9 @@ async function main() {
       password: pinHash,
       name: 'Amit Patel',
       role: UserRole.STAFF,
-      isApproved: true,
+      status: UserStatus.ACTIVE,
+      approvedBy: admin1.id,
+      orgId: org.id,
     },
   })
 
@@ -73,7 +93,9 @@ async function main() {
       password: pinHash,
       name: 'Sneha Gupta',
       role: UserRole.STAFF,
-      isApproved: true,
+      status: UserStatus.ACTIVE,
+      approvedBy: admin1.id,
+      orgId: org.id,
     },
   })
 
@@ -83,7 +105,9 @@ async function main() {
       password: pinHash,
       name: 'Rahul Singh',
       role: UserRole.STAFF,
-      isApproved: true,
+      status: UserStatus.ACTIVE,
+      approvedBy: admin2.id,
+      orgId: org.id,
     },
   })
 
@@ -93,7 +117,9 @@ async function main() {
       password: pinHash,
       name: 'Neha Verma',
       role: UserRole.STAFF,
-      isApproved: true,
+      status: UserStatus.ACTIVE,
+      approvedBy: admin2.id,
+      orgId: org.id,
     },
   })
 
@@ -103,7 +129,9 @@ async function main() {
       password: pinHash,
       name: 'Vikram Joshi',
       role: UserRole.STAFF,
-      isApproved: true,
+      status: UserStatus.ACTIVE,
+      approvedBy: admin2.id,
+      orgId: org.id,
     },
   })
   console.log('👷 Created 5 Staff members')
@@ -118,6 +146,7 @@ async function main() {
       type: ChatType.DIRECT,
       name: 'Amit Patel',
       createdBy: admin1.id,
+      orgId: org.id,
       members: {
         createMany: {
           data: [
@@ -135,6 +164,7 @@ async function main() {
       type: ChatType.DIRECT,
       name: 'Sneha Gupta',
       createdBy: admin2.id,
+      orgId: org.id,
       members: {
         createMany: {
           data: [
@@ -152,6 +182,7 @@ async function main() {
       type: ChatType.DIRECT,
       name: 'Rahul Singh',
       createdBy: admin1.id,
+      orgId: org.id,
       members: {
         createMany: {
           data: [
@@ -170,6 +201,7 @@ async function main() {
       type: ChatType.GROUP,
       name: 'Operations Team',
       createdBy: admin1.id,
+      orgId: org.id,
       members: {
         createMany: {
           data: [
@@ -190,6 +222,7 @@ async function main() {
       type: ChatType.GROUP,
       name: 'Warehouse Staff',
       createdBy: admin2.id,
+      orgId: org.id,
       members: {
         createMany: {
           data: [
@@ -244,7 +277,7 @@ async function main() {
       ownerId: staff1.id,
       status: TaskStatus.IN_PROGRESS,
       priority: TaskPriority.HIGH,
-      dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
+      dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
       createdById: admin1.id,
       steps: {
         createMany: {
@@ -304,7 +337,7 @@ async function main() {
       ownerId: staff2.id,
       status: TaskStatus.PENDING,
       priority: TaskPriority.MEDIUM,
-      dueDate: new Date(Date.now() + 8 * 60 * 60 * 1000), // 8 hours from now
+      dueDate: new Date(Date.now() + 8 * 60 * 60 * 1000),
       createdById: admin1.id,
       steps: {
         createMany: {
@@ -364,9 +397,9 @@ async function main() {
       ownerId: staff4.id,
       status: TaskStatus.COMPLETED,
       priority: TaskPriority.HIGH,
-      dueDate: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+      dueDate: new Date(Date.now() - 2 * 60 * 60 * 1000),
       createdById: admin2.id,
-      completedAt: new Date(Date.now() - 1 * 60 * 60 * 1000), // Completed 1 hour ago
+      completedAt: new Date(Date.now() - 1 * 60 * 60 * 1000),
       steps: {
         createMany: {
           data: [
@@ -380,30 +413,13 @@ async function main() {
   })
 
   await prisma.taskActivity.create({
-    data: {
-      taskId: task3.id,
-      userId: admin2.id,
-      action: 'CREATED',
-      details: { title: task3.title },
-    },
+    data: { taskId: task3.id, userId: admin2.id, action: 'CREATED', details: { title: task3.title } },
   })
-
   await prisma.taskActivity.create({
-    data: {
-      taskId: task3.id,
-      userId: staff4.id,
-      action: 'STATUS_CHANGED',
-      details: { from: 'PENDING', to: 'IN_PROGRESS' },
-    },
+    data: { taskId: task3.id, userId: staff4.id, action: 'STATUS_CHANGED', details: { from: 'PENDING', to: 'IN_PROGRESS' } },
   })
-
   await prisma.taskActivity.create({
-    data: {
-      taskId: task3.id,
-      userId: staff4.id,
-      action: 'STATUS_CHANGED',
-      details: { from: 'IN_PROGRESS', to: 'COMPLETED' },
-    },
+    data: { taskId: task3.id, userId: staff4.id, action: 'STATUS_CHANGED', details: { from: 'IN_PROGRESS', to: 'COMPLETED' } },
   })
 
   // Approved task
@@ -424,7 +440,7 @@ async function main() {
       ownerId: staff5.id,
       status: TaskStatus.APPROVED,
       priority: TaskPriority.LOW,
-      dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday
+      dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
       createdById: admin2.id,
       completedAt: new Date(Date.now() - 20 * 60 * 60 * 1000),
       approvedAt: new Date(Date.now() - 18 * 60 * 60 * 1000),
@@ -440,7 +456,6 @@ async function main() {
     },
   })
 
-  // Add proof for task4
   const task4Steps = await prisma.taskStep.findMany({ where: { taskId: task4.id } })
   await prisma.taskProof.create({
     data: {
@@ -454,39 +469,16 @@ async function main() {
   })
 
   await prisma.taskActivity.create({
-    data: {
-      taskId: task4.id,
-      userId: admin2.id,
-      action: 'CREATED',
-      details: { title: task4.title },
-    },
+    data: { taskId: task4.id, userId: admin2.id, action: 'CREATED', details: { title: task4.title } },
   })
-
   await prisma.taskActivity.create({
-    data: {
-      taskId: task4.id,
-      userId: staff5.id,
-      action: 'PROOF_UPLOADED',
-      details: { stepId: task4Steps[2].id },
-    },
+    data: { taskId: task4.id, userId: staff5.id, action: 'PROOF_UPLOADED', details: { stepId: task4Steps[2].id } },
   })
-
   await prisma.taskActivity.create({
-    data: {
-      taskId: task4.id,
-      userId: staff5.id,
-      action: 'STATUS_CHANGED',
-      details: { from: 'IN_PROGRESS', to: 'COMPLETED' },
-    },
+    data: { taskId: task4.id, userId: staff5.id, action: 'STATUS_CHANGED', details: { from: 'IN_PROGRESS', to: 'COMPLETED' } },
   })
-
   await prisma.taskActivity.create({
-    data: {
-      taskId: task4.id,
-      userId: admin2.id,
-      action: 'APPROVED',
-      details: {},
-    },
+    data: { taskId: task4.id, userId: admin2.id, action: 'APPROVED', details: {} },
   })
 
   // Reopened task
@@ -507,7 +499,7 @@ async function main() {
       ownerId: staff3.id,
       status: TaskStatus.REOPENED,
       priority: TaskPriority.URGENT,
-      dueDate: new Date(Date.now() + 4 * 60 * 60 * 1000), // 4 hours from now
+      dueDate: new Date(Date.now() + 4 * 60 * 60 * 1000),
       createdById: admin1.id,
       steps: {
         createMany: {
@@ -523,21 +515,10 @@ async function main() {
   })
 
   await prisma.taskActivity.create({
-    data: {
-      taskId: task5.id,
-      userId: admin1.id,
-      action: 'CREATED',
-      details: { title: task5.title },
-    },
+    data: { taskId: task5.id, userId: admin1.id, action: 'CREATED', details: { title: task5.title } },
   })
-
   await prisma.taskActivity.create({
-    data: {
-      taskId: task5.id,
-      userId: admin1.id,
-      action: 'REOPENED',
-      details: { reason: 'Shelf not properly secured, needs re-fixing' },
-    },
+    data: { taskId: task5.id, userId: admin1.id, action: 'REOPENED', details: { reason: 'Shelf not properly secured, needs re-fixing' } },
   })
 
   console.log('📝 Created messages and tasks')
@@ -545,6 +526,7 @@ async function main() {
   console.log('✅ Seed completed successfully!')
   console.log('')
   console.log('📋 Summary:')
+  console.log(`   - 1 Organization: ${org.name} (Code: ${org.orgCode})`)
   console.log('   - 1 Super Admin (phone: 9999999999)')
   console.log('   - 2 Admins (phones: 9999999998, 9999999997)')
   console.log('   - 5 Staff members (phones: 9999999996 to 9999999992)')
@@ -553,6 +535,7 @@ async function main() {
   console.log('   - 5 Tasks (various statuses)')
   console.log('')
   console.log('🔑 Default PIN for all users: 1234')
+  console.log(`🏢 Org Code: ${org.orgCode}`)
 }
 
 main()

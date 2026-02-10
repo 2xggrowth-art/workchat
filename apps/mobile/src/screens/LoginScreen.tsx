@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   View,
   Text,
@@ -9,8 +9,10 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  Linking,
 } from 'react-native'
 import { useAuthStore } from '../stores/authStore'
+import { api } from '../services/api'
 
 type Mode = 'login' | 'register' | 'pending'
 
@@ -21,7 +23,58 @@ export default function LoginScreen() {
   const [phone, setPhone] = useState('')
   const [pin, setPin] = useState('')
   const [name, setName] = useState('')
+  const [orgCode, setOrgCode] = useState('')
+  const [orgName, setOrgName] = useState('')
+  const [orgError, setOrgError] = useState('')
+  const [orgLocked, setOrgLocked] = useState(false)
   const [error, setError] = useState('')
+  const resolveTimeout = useRef<ReturnType<typeof setTimeout>>()
+
+  // Handle deep link: workchat.2xg.in/join/WRK4829
+  useEffect(() => {
+    const handleUrl = (url: string) => {
+      const match = url.match(/\/join\/([A-Za-z0-9-]+)/)
+      if (match) {
+        const code = match[1]
+        setOrgCode(code)
+        setOrgLocked(true)
+        setMode('register')
+        resolveOrgCode(code)
+      }
+    }
+
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url)
+    })
+
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url))
+    return () => sub.remove()
+  }, [])
+
+  const resolveOrgCode = async (code: string) => {
+    if (!code || code.length < 3) {
+      setOrgName('')
+      setOrgError('')
+      return
+    }
+    try {
+      const res = await api.get(`/api/auth/resolve-org/${code}`)
+      setOrgName(res.data.data.name)
+      setOrgError('')
+    } catch {
+      setOrgName('')
+      setOrgError('Invalid organization code')
+    }
+  }
+
+  const handleOrgCodeChange = (value: string) => {
+    const upper = value.toUpperCase()
+    setOrgCode(upper)
+    setOrgName('')
+    setOrgError('')
+    if (resolveTimeout.current) clearTimeout(resolveTimeout.current)
+    resolveTimeout.current = setTimeout(() => resolveOrgCode(upper), 500)
+  }
 
   const handleLogin = async () => {
     if (!phone.trim() || !pin.trim()) {
@@ -44,7 +97,7 @@ export default function LoginScreen() {
   }
 
   const handleRegister = async () => {
-    if (!phone.trim() || !pin.trim() || !name.trim()) {
+    if (!phone.trim() || !pin.trim() || !name.trim() || !orgCode.trim()) {
       setError('Please fill in all fields')
       return
     }
@@ -52,11 +105,15 @@ export default function LoginScreen() {
       setError('PIN must be 4-6 digits')
       return
     }
+    if (orgError) {
+      setError('Please enter a valid organization code')
+      return
+    }
     setError('')
 
     try {
       const formattedPhone = phone.startsWith('+') ? phone : `+${phone}`
-      await register(formattedPhone, pin, name)
+      await register(formattedPhone, pin, name, orgCode)
       setMode('pending')
     } catch (err: any) {
       setError(err.response?.data?.error?.message || err.message || 'Registration failed')
@@ -115,18 +172,38 @@ export default function LoginScreen() {
           ) : null}
 
           {mode === 'register' && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Full Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your name"
-                placeholderTextColor="#9E9E9E"
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-                editable={!isLoading}
-              />
-            </View>
+            <>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Organization Code</Text>
+                <TextInput
+                  style={[styles.input, orgLocked && styles.inputDisabled]}
+                  placeholder="e.g. WRK-1234"
+                  placeholderTextColor="#9E9E9E"
+                  value={orgCode}
+                  onChangeText={handleOrgCodeChange}
+                  autoCapitalize="characters"
+                  editable={!isLoading && !orgLocked}
+                />
+                {orgName ? (
+                  <Text style={styles.orgNameText}>{orgName}</Text>
+                ) : null}
+                {orgError ? (
+                  <Text style={styles.orgErrorText}>{orgError}</Text>
+                ) : null}
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Full Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter your name"
+                  placeholderTextColor="#9E9E9E"
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                  editable={!isLoading}
+                />
+              </View>
+            </>
           )}
 
           <View style={styles.inputGroup}>
@@ -342,5 +419,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '500',
+  },
+  inputDisabled: {
+    opacity: 0.6,
+    backgroundColor: '#F5F5F5',
+  },
+  orgNameText: {
+    color: '#4CAF50',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
+  },
+  orgErrorText: {
+    color: '#F44336',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
   },
 })

@@ -9,7 +9,7 @@ interface AuthState {
   token: string | null
   refreshToken: string | null
   login: (phone: string, pin: string) => Promise<void>
-  register: (phone: string, name: string, pin: string) => Promise<string>
+  register: (phone: string, name: string, pin: string, orgCode: string) => Promise<string>
   logout: () => void
   refreshAccessToken: () => Promise<void>
   fetchMe: () => Promise<void>
@@ -29,8 +29,8 @@ export const useAuthStore = create<AuthState>()(
         initSocket(accessToken)
       },
 
-      register: async (phone: string, name: string, pin: string) => {
-        const response = await api.post('/api/auth/register', { phone, name, pin })
+      register: async (phone: string, name: string, pin: string, orgCode: string) => {
+        const response = await api.post('/api/auth/register', { phone, name, pin, orgCode })
         return response.data.data.message
       },
 

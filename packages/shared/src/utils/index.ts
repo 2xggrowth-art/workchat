@@ -247,6 +247,18 @@ export function generateOtp(): string {
 }
 
 // ============================================
+// ORGANIZATION UTILITIES
+// ============================================
+
+/**
+ * Generate a random org code like "WRK-4829"
+ */
+export function generateOrgCode(): string {
+  const num = Math.floor(1000 + Math.random() * 9000)
+  return `WRK-${num}`
+}
+
+// ============================================
 // FILE UTILITIES
 // ============================================
 

@@ -21,6 +21,13 @@ enum UserRole {
   STAFF
 }
 
+// User account status
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
 // Group member roles (WhatsApp-style)
 enum ChatMemberRole {
   OWNER  // Group creator - full control
@@ -57,23 +64,45 @@ enum TaskPriority {
 }
 
 // ============================================
+// ORGANIZATION MODEL
+// ============================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  orgCode   String   @unique @map("org_code")  // e.g. "WRK-4829"
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  users     User[]
+  chats     Chat[]
+
+  @@map("organizations")
+}
+
+// ============================================
 // USER MODEL
 // ============================================
 
 model User {
-  id           String    @id @default(cuid())
-  phone        String    @unique
+  id           String      @id @default(cuid())
+  phone        String      @unique
   name         String
-  avatarUrl    String?   @map("avatar_url")
+  avatarUrl    String?     @map("avatar_url")
   emoji        String?
 
   // Password authentication
   password     String
-  role         UserRole  @default(STAFF)
-  isApproved   Boolean   @default(false) @map("is_approved")
+  role         UserRole    @default(STAFF)
+  status       UserStatus  @default(PENDING)
+  approvedBy   String?     @map("approved_by")
 
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  // Organization
+  orgId        String      @map("org_id")
+  org          Organization @relation(fields: [orgId], references: [id])
+
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
 
   // Relations
   chatMemberships ChatMember[]
@@ -85,6 +114,7 @@ model User {
   chatsCreated    Chat[]         @relation("ChatCreator")
   refreshTokens   RefreshToken[]
 
+  @@index([orgId])
   @@map("users")
 }
 
@@ -97,15 +127,18 @@ model Chat {
   type      ChatType @default(GROUP)
   name      String
   createdBy String   @map("created_by")
+  orgId     String   @map("org_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
   creator  User         @relation("ChatCreator", fields: [createdBy], references: [id])
+  org      Organization @relation(fields: [orgId], references: [id])
   members  ChatMember[]
   messages Message[]
 
   @@index([createdBy])
+  @@index([orgId])
   @@index([updatedAt(sort: Desc)])
   @@map("chats")
 }

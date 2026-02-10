@@ -1,4 +1,15 @@
 // ============================================
+// ORGANIZATION TYPES
+// ============================================
+
+export interface Organization {
+  id: string
+  name: string
+  orgCode: string
+  createdAt: Date
+}
+
+// ============================================
 // USER TYPES
 // ============================================
 
@@ -8,13 +19,21 @@ export enum UserRole {
   STAFF = 'STAFF',
 }
 
+export enum UserStatus {
+  PENDING = 'PENDING',
+  ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+}
+
 export interface User {
   id: string
   phone: string
   name: string
   avatarUrl: string | null
   role: UserRole
-  isApproved: boolean
+  status: UserStatus
+  orgId: string
+  org?: Organization
   createdAt: Date
 }
 
@@ -211,6 +230,7 @@ export interface RegisterRequest {
   phone: string
   name: string
   pin: string
+  orgCode: string
 }
 
 export interface LoginRequest {
@@ -274,6 +294,29 @@ export interface PromoteMemberRequest {
 export interface UpdateGroupRequest {
   name?: string
   avatarUrl?: string
+}
+
+// Organization Management
+export interface OrgSettingsResponse {
+  id: string
+  name: string
+  orgCode: string
+  inviteLink: string
+  createdAt: Date
+}
+
+export interface OrgMember {
+  id: string
+  phone: string
+  name: string
+  role: UserRole
+  status: UserStatus
+  createdAt: Date
+}
+
+export interface ResolveOrgResponse {
+  name: string
+  orgCode: string
 }
 
 // ============================================
