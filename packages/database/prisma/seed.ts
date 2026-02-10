@@ -528,14 +528,14 @@ async function main() {
   console.log('')
   console.log('📋 Summary:')
   console.log(`   - 1 Organization: ${org.name} (Code: ${org.orgCode})`)
-  console.log('   - 1 Super Admin (phone: +918660310636, PIN: 1111)')
+  console.log('   - 1 Super Admin (phone: +918660310636)')
   console.log('   - 2 Admins (phones: 9999999998, 9999999997)')
   console.log('   - 5 Staff members (phones: 9999999996 to 9999999992)')
   console.log('   - 3 Direct chats')
   console.log('   - 2 Group chats')
   console.log('   - 5 Tasks (various statuses)')
   console.log('')
-  console.log('🔑 Default PIN for all users: 1234')
+  console.log('🔑 Users created with pre-set PINs')
   console.log(`🏢 Org Code: ${org.orgCode}`)
 }
 
