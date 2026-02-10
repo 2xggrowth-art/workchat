@@ -29,18 +29,18 @@ RUN pnpm --filter @workchat/shared build
 # Build API
 RUN pnpm --filter @workchat/api build
 
+# Copy entrypoint script
+COPY packages/api/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
 # Set working directory to api
 WORKDIR /app/packages/api
 
 # Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+# Health check - generous start period for migrations
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
-
-# Entrypoint: run migrations, then start server
-COPY packages/api/docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
 
 CMD ["/app/docker-entrypoint.sh"]
