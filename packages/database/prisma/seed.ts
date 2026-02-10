@@ -23,6 +23,7 @@ async function main() {
 
   // Hash PINs
   const pinHash = await hash('1234', 12)
+  const superAdminPinHash = await hash('1111', 12)
 
   // ============================================
   // CREATE ORGANIZATION
@@ -42,9 +43,9 @@ async function main() {
 
   const superAdmin = await prisma.user.create({
     data: {
-      phone: '9999999999',
-      password: pinHash,
-      name: 'Super Admin',
+      phone: '+918660310636',
+      password: superAdminPinHash,
+      name: 'Arsalan',
       role: UserRole.SUPER_ADMIN,
       status: UserStatus.ACTIVE,
       orgId: org.id,
@@ -527,7 +528,7 @@ async function main() {
   console.log('')
   console.log('📋 Summary:')
   console.log(`   - 1 Organization: ${org.name} (Code: ${org.orgCode})`)
-  console.log('   - 1 Super Admin (phone: 9999999999)')
+  console.log('   - 1 Super Admin (phone: +918660310636, PIN: 1111)')
   console.log('   - 2 Admins (phones: 9999999998, 9999999997)')
   console.log('   - 5 Staff members (phones: 9999999996 to 9999999992)')
   console.log('   - 3 Direct chats')
