@@ -5,8 +5,9 @@ import ChatPanel from '../components/chat/ChatPanel'
 import EmptyChat from '../components/chat/EmptyChat'
 import AdminSummaryPanel from '../components/admin/AdminSummaryPanel'
 import UserApprovalPanel from '../components/admin/UserApprovalPanel'
+import OrgSettingsPanel from '../components/admin/OrgSettingsPanel'
 
-export type ActiveView = 'chats' | 'admin-summary' | 'user-approval'
+export type ActiveView = 'chats' | 'admin-summary' | 'user-approval' | 'org-settings'
 
 export default function MainLayout() {
   const [activeView, setActiveView] = useState<ActiveView>('chats')
@@ -23,6 +24,9 @@ export default function MainLayout() {
         )}
         {activeView === 'user-approval' && (
           <UserApprovalPanel onClose={() => setActiveView('chats')} />
+        )}
+        {activeView === 'org-settings' && (
+          <OrgSettingsPanel onClose={() => setActiveView('chats')} />
         )}
         {activeView === 'chats' && (
           <Routes>

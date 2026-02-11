@@ -119,6 +119,15 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
                         </svg>
                         Pending Users
                       </button>
+                      <button
+                        onClick={() => { setShowMenu(false); onViewChange('org-settings'); }}
+                        className="w-full px-5 py-3 text-left text-sm text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
+                      >
+                        <svg className="w-[18px] h-[18px] text-gray-400 dark:text-[#8696A0]" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/>
+                        </svg>
+                        Organization
+                      </button>
                     </>
                   )}
                   <button
