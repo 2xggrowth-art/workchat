@@ -80,7 +80,7 @@ export default function ConvertToTaskSheet({ open, onClose, chatId, messageId, m
       await api.post(`/api/messages/${messageId}/convert-to-task`, {
         title: title.trim(),
         ownerId: assigneeId,
-        dueDate: dueDate || undefined,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
         priority,
         approvalRequired,
         isRecurring,
