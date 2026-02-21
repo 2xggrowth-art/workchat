@@ -69,10 +69,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   createDirectChat: async (userId: string) => {
-    const response = await api.post('/api/chats', {
-      type: 'DIRECT',
-      name: '',
-      memberIds: [userId],
+    const response = await api.post('/api/users/start-chat', {
+      userId,
     })
     const chat = response.data.data
     set((state) => ({ chats: [chat, ...state.chats] }))
