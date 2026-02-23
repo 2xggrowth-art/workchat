@@ -25,6 +25,7 @@ export default function ChatPanel() {
   const [taskDetailId, setTaskDetailId] = useState<string | null>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [replyingTo, setReplyingTo] = useState<any>(null)
+  const [editingMessage, setEditingMessage] = useState<{ id: string; chatId: string; content: string } | null>(null)
   const [uploadingFile, setUploadingFile] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: string } | null>(null)
   const [tasksOnlyView, setTasksOnlyView] = useState(false)
@@ -80,6 +81,78 @@ export default function ChatPanel() {
       formData.append('file', file, file instanceof File ? file.name : 'voice-note.webm')
       const response = await api.post('/api/upload', formData)
       return response.data.data
+    },
+  })
+
+  const editMessageMutation = useMutation({
+    mutationFn: async ({ messageId, content }: { messageId: string; content: string }) => {
+      const response = await api.patch(`/api/messages/${messageId}`, { content })
+      return response.data.data
+    },
+    onSuccess: (updatedMsg) => {
+      queryClient.setQueryData(['messages', chatId], (oldData: any) => {
+        if (!oldData) return oldData
+        return {
+          ...oldData,
+          data: oldData.data.map((m: any) => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m),
+        }
+      })
+      setMessageText('')
+      setEditingMessage(null)
+    },
+  })
+
+  const deleteForMeMutation = useMutation({
+    mutationFn: async (messageId: string) => {
+      await api.post(`/api/messages/${messageId}/delete`, { mode: 'for_me' })
+      return messageId
+    },
+    onSuccess: (messageId) => {
+      queryClient.setQueryData(['messages', chatId], (oldData: any) => {
+        if (!oldData) return oldData
+        return {
+          ...oldData,
+          data: oldData.data.filter((m: any) => m.id !== messageId),
+        }
+      })
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+    },
+  })
+
+  const deleteForEveryoneMutation = useMutation({
+    mutationFn: async (messageId: string) => {
+      await api.post(`/api/messages/${messageId}/delete`, { mode: 'for_everyone' })
+      return messageId
+    },
+    onSuccess: (messageId) => {
+      queryClient.setQueryData(['messages', chatId], (oldData: any) => {
+        if (!oldData) return oldData
+        return {
+          ...oldData,
+          data: oldData.data.map((m: any) =>
+            m.id === messageId
+              ? { ...m, content: null, fileUrl: null, deletedForEveryone: true, deletedAt: new Date().toISOString() }
+              : m
+          ),
+        }
+      })
+      queryClient.invalidateQueries({ queryKey: ['chats'] })
+    },
+  })
+
+  const pinMutation = useMutation({
+    mutationFn: async (messageId: string) => {
+      const response = await api.post(`/api/messages/${messageId}/pin`)
+      return { messageId, pinned: response.data.data.pinned }
+    },
+    onSuccess: ({ messageId, pinned }) => {
+      queryClient.setQueryData(['messages', chatId], (oldData: any) => {
+        if (!oldData) return oldData
+        return {
+          ...oldData,
+          data: oldData.data.map((m: any) => m.id === messageId ? { ...m, isPinned: pinned } : m),
+        }
+      })
     },
   })
 
@@ -146,10 +219,67 @@ export default function ChatPanel() {
       })
     }
 
+    const handleMessageEdited = (data: { chatId: string; message: any }) => {
+      if (data.chatId === chatId) {
+        queryClient.setQueryData(['messages', chatId], (oldData: any) => {
+          if (!oldData) return oldData
+          return {
+            ...oldData,
+            data: oldData.data.map((m: any) => m.id === data.message.id ? { ...m, ...data.message } : m),
+          }
+        })
+      }
+    }
+
+    const handleMessageDeletedForEveryone = (data: { chatId: string; messageId: string }) => {
+      if (data.chatId === chatId) {
+        queryClient.setQueryData(['messages', chatId], (oldData: any) => {
+          if (!oldData) return oldData
+          return {
+            ...oldData,
+            data: oldData.data.map((m: any) =>
+              m.id === data.messageId
+                ? { ...m, content: null, fileUrl: null, deletedForEveryone: true, deletedAt: new Date().toISOString() }
+                : m
+            ),
+          }
+        })
+        queryClient.invalidateQueries({ queryKey: ['chats'] })
+      }
+    }
+
+    const handleMessagePinned = (data: { chatId: string; messageId: string }) => {
+      if (data.chatId === chatId) {
+        queryClient.setQueryData(['messages', chatId], (oldData: any) => {
+          if (!oldData) return oldData
+          return {
+            ...oldData,
+            data: oldData.data.map((m: any) => m.id === data.messageId ? { ...m, isPinned: true } : m),
+          }
+        })
+      }
+    }
+
+    const handleMessageUnpinned = (data: { chatId: string; messageId: string }) => {
+      if (data.chatId === chatId) {
+        queryClient.setQueryData(['messages', chatId], (oldData: any) => {
+          if (!oldData) return oldData
+          return {
+            ...oldData,
+            data: oldData.data.map((m: any) => m.id === data.messageId ? { ...m, isPinned: false } : m),
+          }
+        })
+      }
+    }
+
     socket.on('new_message', handleNewMessage)
     socket.on('task_status_changed', handleTaskUpdate)
     socket.on('message_converted_to_task', handleTaskUpdate)
     socket.on('user_typing', handleTyping)
+    socket.on('message_edited', handleMessageEdited)
+    socket.on('message_deleted_for_everyone', handleMessageDeletedForEveryone)
+    socket.on('message_pinned', handleMessagePinned)
+    socket.on('message_unpinned', handleMessageUnpinned)
 
     return () => {
       leaveChat(chatId)
@@ -157,6 +287,10 @@ export default function ChatPanel() {
       socket.off('task_status_changed', handleTaskUpdate)
       socket.off('message_converted_to_task', handleTaskUpdate)
       socket.off('user_typing', handleTyping)
+      socket.off('message_edited', handleMessageEdited)
+      socket.off('message_deleted_for_everyone', handleMessageDeletedForEveryone)
+      socket.off('message_pinned', handleMessagePinned)
+      socket.off('message_unpinned', handleMessageUnpinned)
       setTypingUsers([])
     }
   }, [chatId, queryClient, user?.id])
@@ -216,11 +350,15 @@ export default function ChatPanel() {
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault()
     if (!messageText.trim()) return
-    sendMessageMutation.mutate({
-      content: messageText.trim(),
-      type: MessageType.TEXT,
-      replyToId: replyingTo?.id,
-    })
+    if (editingMessage) {
+      editMessageMutation.mutate({ messageId: editingMessage.id, content: messageText.trim() })
+    } else {
+      sendMessageMutation.mutate({
+        content: messageText.trim(),
+        type: MessageType.TEXT,
+        replyToId: replyingTo?.id,
+      })
+    }
   }
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>, type: MessageType) => {
@@ -310,6 +448,9 @@ export default function ChatPanel() {
     }
     return 'online'
   })()
+
+  const myMembership = chat?.members?.find((m: any) => m.userId === user?.id)
+  const canPin = chat?.type === 'DIRECT' || myMembership?.role === 'OWNER' || myMembership?.role === 'ADMIN'
 
   const avatarColors = ['#075E54', '#128C7E', '#25D366', '#6a1b9a', '#c62828', '#1565c0', '#2e7d32', '#e65100']
   const avatarColor = chatHeaderName ? avatarColors[chatHeaderName.charCodeAt(0) % avatarColors.length] : '#6B7C85'
@@ -488,6 +629,25 @@ export default function ChatPanel() {
         </div>
       )}
 
+      {/* Pinned messages banner */}
+      {(() => {
+        const pinnedMsgs = messages.filter((m: any) => m.isPinned)
+        if (pinnedMsgs.length === 0) return null
+        return (
+          <div
+            className="px-[60px] py-2 bg-white dark:bg-[#202C33] border-b border-gray-200 dark:border-[#222D34] flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-[#2A3942] transition-colors z-10"
+            onClick={() => scrollToMessage(pinnedMsgs[0].id)}
+          >
+            <svg className="w-4 h-4 text-blue-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+            <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
+              {pinnedMsgs.length === 1
+                ? pinnedMsgs[0].content || 'Pinned message'
+                : `${pinnedMsgs.length} pinned messages`}
+            </span>
+          </div>
+        )
+      })()}
+
       {/* Messages area */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-[60px] py-5 z-[1]" onClick={() => setContextMenu(null)}>
         {isLoading ? (
@@ -645,33 +805,44 @@ export default function ChatPanel() {
                           onClick={() => scrollToMessage(message.replyTo.id)}
                         >
                           <p className="text-xs text-[#128C7E] font-medium">{message.replyTo.sender?.name}</p>
-                          <p className="text-xs text-gray-500 dark:text-[#8696A0] truncate">{message.replyTo.content || `[${message.replyTo.type}]`}</p>
+                          <p className="text-xs text-gray-500 dark:text-[#8696A0] truncate">
+                            {message.replyTo.deletedForEveryone ? 'This message was deleted' : (message.replyTo.content || `[${message.replyTo.type}]`)}
+                          </p>
                         </div>
                       )}
 
-                      {message.type === MessageType.IMAGE && message.fileUrl && (
-                        <div className="w-[280px] h-[180px] rounded-md bg-gray-200 dark:bg-[#3B4A54] mb-1 overflow-hidden cursor-pointer" onClick={() => window.open(message.fileUrl, '_blank')}>
-                          <img src={message.fileUrl} alt="" className="w-full h-full object-cover" />
-                        </div>
-                      )}
-                      {message.type === MessageType.VIDEO && message.fileUrl && (
-                        <video src={message.fileUrl} controls className="max-w-full rounded-md mb-1" />
-                      )}
-                      {message.type === MessageType.AUDIO && message.fileUrl && (
-                        <VoiceNotePlayer src={message.fileUrl} isSent={isSent} />
-                      )}
-                      {message.type === MessageType.FILE && message.fileUrl && (
-                        <a href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[#128C7E] hover:underline text-sm mb-1">
-                          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-                          Download File
-                        </a>
-                      )}
-
-                      {message.content && (
-                        <div className="text-[14.2px] leading-[1.35] pr-[50px] text-gray-900 dark:text-[#E9EDEF]">{message.content}</div>
+                      {message.deletedForEveryone ? (
+                        <div className="text-[14.2px] leading-[1.35] pr-[50px] text-gray-400 dark:text-[#8696A0] italic">This message was deleted</div>
+                      ) : (
+                        <>
+                          {message.type === MessageType.IMAGE && message.fileUrl && (
+                            <div className="w-[280px] h-[180px] rounded-md bg-gray-200 dark:bg-[#3B4A54] mb-1 overflow-hidden cursor-pointer" onClick={() => window.open(message.fileUrl, '_blank')}>
+                              <img src={message.fileUrl} alt="" className="w-full h-full object-cover" />
+                            </div>
+                          )}
+                          {message.type === MessageType.VIDEO && message.fileUrl && (
+                            <video src={message.fileUrl} controls className="max-w-full rounded-md mb-1" />
+                          )}
+                          {message.type === MessageType.AUDIO && message.fileUrl && (
+                            <VoiceNotePlayer src={message.fileUrl} isSent={isSent} />
+                          )}
+                          {message.type === MessageType.FILE && message.fileUrl && (
+                            <a href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[#128C7E] hover:underline text-sm mb-1">
+                              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+                              Download File
+                            </a>
+                          )}
+                          {message.content && (
+                            <div className="text-[14.2px] leading-[1.35] pr-[50px] text-gray-900 dark:text-[#E9EDEF]">{message.content}</div>
+                          )}
+                        </>
                       )}
 
                       <div className="flex items-center justify-end gap-1 -mt-0.5 float-right pl-3 relative bottom-[-4px]">
+                        {message.isPinned && (
+                          <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+                        )}
+                        {message.editedAt && !message.deletedForEveryone && <span className="text-[11px] text-gray-400 dark:text-[#667781] italic">edited</span>}
                         <span className="text-[11px] text-gray-500 dark:text-[#8696A0] whitespace-nowrap">{formatMessageTime(message.createdAt)}</span>
                         {isSent && renderReadReceipt(message)}
                       </div>
@@ -707,29 +878,103 @@ export default function ChatPanel() {
             className="fixed bg-white dark:bg-[#233138] rounded-lg shadow-xl py-1.5 min-w-[200px] z-[1000]"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
-            <button
-              onClick={() => {
-                const msg = messages.find((m: any) => m.id === contextMenu.msgId)
-                if (msg) setReplyingTo(msg)
-                setContextMenu(null)
-              }}
-              className="w-full px-5 py-2.5 text-left text-sm text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
-            >
-              <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>
-              Reply
-            </button>
-            <button
-              onClick={() => {
-                const msg = messages.find((m: any) => m.id === contextMenu.msgId)
-                if (msg?.content) navigator.clipboard?.writeText(msg.content)
-                setContextMenu(null)
-              }}
-              className="w-full px-5 py-2.5 text-left text-sm text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
-            >
-              <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-              Copy
-            </button>
-            {isAdmin && (() => {
+            {(() => {
+              const msg = messages.find((m: any) => m.id === contextMenu.msgId)
+              const isDeleted = msg?.deletedForEveryone
+              return !isDeleted
+            })() && (
+              <>
+                <button
+                  onClick={() => {
+                    const msg = messages.find((m: any) => m.id === contextMenu.msgId)
+                    if (msg) setReplyingTo(msg)
+                    setContextMenu(null)
+                  }}
+                  className="w-full px-5 py-2.5 text-left text-sm text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
+                >
+                  <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>
+                  Reply
+                </button>
+                <button
+                  onClick={() => {
+                    const msg = messages.find((m: any) => m.id === contextMenu.msgId)
+                    if (msg?.content) navigator.clipboard?.writeText(msg.content)
+                    setContextMenu(null)
+                  }}
+                  className="w-full px-5 py-2.5 text-left text-sm text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
+                >
+                  <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                  Copy
+                </button>
+                {(() => {
+                  const msg = messages.find((m: any) => m.id === contextMenu.msgId)
+                  return msg && msg.senderId === user?.id && msg.type === MessageType.TEXT && !msg.isTask
+                })() && (
+                  <button
+                    onClick={() => {
+                      const msg = messages.find((m: any) => m.id === contextMenu.msgId)
+                      if (msg) {
+                        setEditingMessage({ id: msg.id, chatId: msg.chatId, content: msg.content || '' })
+                        setMessageText(msg.content || '')
+                        setReplyingTo(null)
+                        setTimeout(() => inputRef.current?.focus(), 50)
+                      }
+                      setContextMenu(null)
+                    }}
+                    className="w-full px-5 py-2.5 text-left text-sm text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
+                  >
+                    <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    Edit
+                  </button>
+                )}
+                {canPin && (
+                  <button
+                    onClick={() => {
+                      pinMutation.mutate(contextMenu.msgId)
+                      setContextMenu(null)
+                    }}
+                    className="w-full px-5 py-2.5 text-left text-sm text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
+                  >
+                    {(() => {
+                      const msg = messages.find((m: any) => m.id === contextMenu.msgId)
+                      return msg?.isPinned ? (
+                        <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+                      )
+                    })()}
+                    {(() => {
+                      const msg = messages.find((m: any) => m.id === contextMenu.msgId)
+                      return msg?.isPinned ? 'Unpin' : 'Pin'
+                    })()}
+                  </button>
+                )}
+                {isAdmin && (() => {
+                  const msg = messages.find((m: any) => m.id === contextMenu.msgId)
+                  return msg && !msg.isTask
+                })() && (
+                  <>
+                    <div className="border-t border-gray-200 dark:border-[#3B4A54] my-1" />
+                    <button
+                      onClick={() => {
+                        const msg = messages.find((m: any) => m.id === contextMenu.msgId)
+                        if (msg) {
+                          setSelectedMessage(msg)
+                          setShowConvertModal(true)
+                        }
+                        setContextMenu(null)
+                      }}
+                      className="w-full px-5 py-2.5 text-left text-sm text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
+                    >
+                      <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                      Convert to Task
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+            {/* Delete options */}
+            {(() => {
               const msg = messages.find((m: any) => m.id === contextMenu.msgId)
               return msg && !msg.isTask
             })() && (
@@ -737,18 +982,34 @@ export default function ChatPanel() {
                 <div className="border-t border-gray-200 dark:border-[#3B4A54] my-1" />
                 <button
                   onClick={() => {
-                    const msg = messages.find((m: any) => m.id === contextMenu.msgId)
-                    if (msg) {
-                      setSelectedMessage(msg)
-                      setShowConvertModal(true)
+                    if (window.confirm('Delete this message for you?')) {
+                      deleteForMeMutation.mutate(contextMenu.msgId)
                     }
                     setContextMenu(null)
                   }}
-                  className="w-full px-5 py-2.5 text-left text-sm text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
+                  className="w-full px-5 py-2.5 text-left text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
                 >
-                  <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                  Convert to Task
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                  Delete for me
                 </button>
+                {(() => {
+                  const msg = messages.find((m: any) => m.id === contextMenu.msgId)
+                  return msg && msg.senderId === user?.id && !msg.deletedForEveryone &&
+                    Date.now() - new Date(msg.createdAt).getTime() < 60 * 60 * 1000
+                })() && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Delete this message for everyone? This cannot be undone.')) {
+                        deleteForEveryoneMutation.mutate(contextMenu.msgId)
+                      }
+                      setContextMenu(null)
+                    }}
+                    className="w-full px-5 py-2.5 text-left text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-[#3B4A54] flex items-center gap-3.5"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    Delete for everyone
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -764,6 +1025,23 @@ export default function ChatPanel() {
             <p className="text-sm text-gray-500 dark:text-[#8696A0] truncate">{replyingTo.content || `[${replyingTo.type}]`}</p>
           </div>
           <button onClick={() => setReplyingTo(null)} className="p-1 text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.1 17.2l-5.3-5.3 5.3-5.3-1.8-1.8-5.3 5.4-5.3-5.3-1.8 1.7 5.3 5.3-5.3 5.3L6.7 19l5.3-5.3 5.3 5.3 1.8-1.8z"/></svg>
+          </button>
+        </div>
+      )}
+
+      {/* Edit preview */}
+      {editingMessage && (
+        <div className="px-4 py-2 bg-[#f0f2f5] dark:bg-[#1f2c33] border-t border-gray-200 dark:border-[#3B4A54] flex items-center gap-3 z-10">
+          <div className="w-1 h-10 bg-[#1565c0] rounded-full" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-[#1565c0] font-medium flex items-center gap-1">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+              Editing
+            </p>
+            <p className="text-sm text-gray-500 dark:text-[#8696A0] truncate">{editingMessage.content}</p>
+          </div>
+          <button onClick={() => { setEditingMessage(null); setMessageText('') }} className="p-1 text-gray-400 hover:text-gray-600">
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.1 17.2l-5.3-5.3 5.3-5.3-1.8-1.8-5.3 5.4-5.3-5.3-1.8 1.7 5.3 5.3-5.3 5.3L6.7 19l5.3-5.3 5.3 5.3 1.8-1.8z"/></svg>
           </button>
         </div>

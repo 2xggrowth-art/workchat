@@ -125,6 +125,11 @@ export interface Message {
   isTask: boolean
   task: Task | null
   readBy?: string[]
+  editedAt: string | null
+  deletedAt: string | null
+  deletedForEveryone: boolean
+  isStarred?: boolean
+  isPinned?: boolean
   createdAt: string
 }
 

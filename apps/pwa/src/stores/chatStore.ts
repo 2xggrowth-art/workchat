@@ -14,6 +14,15 @@ interface ChatState {
   updateMessage: (chatId: string, message: Message) => void
   createDirectChat: (userId: string) => Promise<Chat>
   createGroupChat: (name: string, memberIds: string[]) => Promise<Chat>
+  editMessage: (messageId: string, chatId: string, content: string) => Promise<void>
+  deleteMessageForMe: (messageId: string, chatId: string) => Promise<void>
+  deleteMessageForEveryone: (messageId: string, chatId: string) => Promise<void>
+  removeMessage: (chatId: string, messageId: string) => void
+  markMessageDeletedForEveryone: (chatId: string, messageId: string) => void
+  starMessage: (messageId: string, chatId: string) => Promise<void>
+  toggleMessageStar: (chatId: string, messageId: string, starred: boolean) => void
+  pinMessage: (messageId: string, chatId: string) => Promise<void>
+  toggleMessagePin: (chatId: string, messageId: string, pinned: boolean) => void
 }
 
 export const useChatStore = create<ChatState>()((set, get) => ({
@@ -69,10 +78,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   createDirectChat: async (userId: string) => {
-    const response = await api.post('/api/chats', {
-      type: 'DIRECT',
-      name: '',
-      memberIds: [userId],
+    const response = await api.post('/api/users/start-chat', {
+      userId,
     })
     const chat = response.data.data
     set((state) => ({ chats: [chat, ...state.chats] }))
@@ -88,5 +95,89 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     const chat = response.data.data
     set((state) => ({ chats: [chat, ...state.chats] }))
     return chat
+  },
+
+  editMessage: async (messageId: string, chatId: string, content: string) => {
+    const response = await api.patch(`/api/messages/${messageId}`, { content })
+    const updatedMsg = response.data.data
+    get().updateMessage(chatId, updatedMsg)
+  },
+
+  deleteMessageForMe: async (messageId: string, chatId: string) => {
+    await api.post(`/api/messages/${messageId}/delete`, { mode: 'for_me' })
+    get().removeMessage(chatId, messageId)
+  },
+
+  deleteMessageForEveryone: async (messageId: string, chatId: string) => {
+    await api.post(`/api/messages/${messageId}/delete`, { mode: 'for_everyone' })
+    get().markMessageDeletedForEveryone(chatId, messageId)
+  },
+
+  removeMessage: (chatId: string, messageId: string) => {
+    set((state) => {
+      const existing = state.messages[chatId] || []
+      return {
+        messages: {
+          ...state.messages,
+          [chatId]: existing.filter((m) => m.id !== messageId),
+        },
+      }
+    })
+  },
+
+  markMessageDeletedForEveryone: (chatId: string, messageId: string) => {
+    set((state) => {
+      const existing = state.messages[chatId] || []
+      return {
+        messages: {
+          ...state.messages,
+          [chatId]: existing.map((m) =>
+            m.id === messageId
+              ? { ...m, content: null, fileUrl: null, deletedForEveryone: true, deletedAt: new Date().toISOString() }
+              : m
+          ),
+        },
+      }
+    })
+  },
+
+  starMessage: async (messageId: string, chatId: string) => {
+    const response = await api.post(`/api/messages/${messageId}/star`)
+    const { starred } = response.data.data
+    get().toggleMessageStar(chatId, messageId, starred)
+  },
+
+  toggleMessageStar: (chatId: string, messageId: string, starred: boolean) => {
+    set((state) => {
+      const existing = state.messages[chatId] || []
+      return {
+        messages: {
+          ...state.messages,
+          [chatId]: existing.map((m) =>
+            m.id === messageId ? { ...m, isStarred: starred } : m
+          ),
+        },
+      }
+    })
+  },
+
+  pinMessage: async (messageId: string, chatId: string) => {
+    const response = await api.post(`/api/messages/${messageId}/pin`)
+    const { pinned } = response.data.data
+    get().toggleMessagePin(chatId, messageId, pinned)
+  },
+
+  toggleMessagePin: (chatId: string, messageId: string, pinned: boolean) => {
+    set((state) => {
+      const existing = state.messages[chatId] || []
+      return {
+        messages: {
+          ...state.messages,
+          [chatId]: existing.map((m) =>
+            m.id === messageId ? { ...m, isPinned: pinned } : m
+          ),
+        },
+      }
+    })
   },
 }))

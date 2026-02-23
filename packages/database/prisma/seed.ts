@@ -55,7 +55,7 @@ async function main() {
 
   const admin1 = await prisma.user.create({
     data: {
-      phone: '9999999998',
+      phone: '+9999999998',
       password: pinHash,
       name: 'Rajesh Kumar',
       role: UserRole.ADMIN,
@@ -66,7 +66,7 @@ async function main() {
 
   const admin2 = await prisma.user.create({
     data: {
-      phone: '9999999997',
+      phone: '+9999999997',
       password: pinHash,
       name: 'Priya Sharma',
       role: UserRole.ADMIN,
@@ -78,7 +78,7 @@ async function main() {
 
   const staff1 = await prisma.user.create({
     data: {
-      phone: '9999999996',
+      phone: '+9999999996',
       password: pinHash,
       name: 'Amit Patel',
       role: UserRole.STAFF,
@@ -90,7 +90,7 @@ async function main() {
 
   const staff2 = await prisma.user.create({
     data: {
-      phone: '9999999995',
+      phone: '+9999999995',
       password: pinHash,
       name: 'Sneha Gupta',
       role: UserRole.STAFF,
@@ -102,7 +102,7 @@ async function main() {
 
   const staff3 = await prisma.user.create({
     data: {
-      phone: '9999999994',
+      phone: '+9999999994',
       password: pinHash,
       name: 'Rahul Singh',
       role: UserRole.STAFF,
@@ -114,7 +114,7 @@ async function main() {
 
   const staff4 = await prisma.user.create({
     data: {
-      phone: '9999999993',
+      phone: '+9999999993',
       password: pinHash,
       name: 'Neha Verma',
       role: UserRole.STAFF,
@@ -126,7 +126,7 @@ async function main() {
 
   const staff5 = await prisma.user.create({
     data: {
-      phone: '9999999992',
+      phone: '+9999999992',
       password: pinHash,
       name: 'Vikram Joshi',
       role: UserRole.STAFF,

@@ -72,22 +72,21 @@ async function buildServer() {
     },
   })
 
-  await fastify.register(rateLimit, {
-    max: 200, // Increased from 100 to 200 requests per minute
-    timeWindow: '1 minute',
-    // More lenient rate limiting for auth endpoints during testing
-    keyGenerator: (request) => {
-      // For OTP endpoints, rate limit by phone number if available
-      if (request.url?.includes('/api/auth/') && request.body) {
-        const body = request.body as { phone?: string }
-        if (body.phone) {
-          return `phone:${body.phone}`
+  if (process.env.NODE_ENV === 'production') {
+    await fastify.register(rateLimit, {
+      max: 200,
+      timeWindow: '1 minute',
+      keyGenerator: (request) => {
+        if (request.url?.includes('/api/auth/') && request.body) {
+          const body = request.body as { phone?: string }
+          if (body.phone) {
+            return `phone:${body.phone}`
+          }
         }
-      }
-      // Default: rate limit by IP
-      return request.ip
-    },
-  })
+        return request.ip
+      },
+    })
+  }
 
   // Global error handler
   fastify.setErrorHandler(errorHandler)
