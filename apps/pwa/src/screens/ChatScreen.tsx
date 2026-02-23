@@ -704,7 +704,8 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
                 <button onClick={() => { setReplyTo({ id: contextMenu.msgId, text: contextMenu.text }); setContextMenu(null) }} className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left dark:text-white active:bg-gray-100 dark:active:bg-gray-700">
                   Reply
                 </button>
-                {contextMenu.senderId === user?.id && contextMenu.msgType === 'TEXT' && !contextMenu.isTask && (
+                {contextMenu.senderId === user?.id && contextMenu.msgType === 'TEXT' && !contextMenu.isTask &&
+                  Date.now() - new Date(contextMenu.createdAt).getTime() < 15 * 60 * 1000 && (
                   <button
                     onClick={() => {
                       setEditingMsg({ id: contextMenu.msgId, chatId: chat.id, text: contextMenu.text })

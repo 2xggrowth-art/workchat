@@ -111,8 +111,11 @@ model User {
   tasksCreated    Task[]         @relation("TaskCreator")
   taskProofs      TaskProof[]
   taskActivities  TaskActivity[]
-  chatsCreated    Chat[]         @relation("ChatCreator")
-  refreshTokens   RefreshToken[]
+  chatsCreated      Chat[]             @relation("ChatCreator")
+  refreshTokens     RefreshToken[]
+  deletedMessages   MessageDeletedFor[] @relation("UserDeletedMessages")
+  starredMessages   MessageStarred[]    @relation("UserStarredMessages")
+  pinnedMessages    MessagePinned[]     @relation("UserPinnedMessages")
 
   @@index([orgId])
   @@map("users")
@@ -228,6 +231,7 @@ model MessageDeletedFor {
 
   // Relations
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation("UserDeletedMessages", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId])
   @@index([userId])
@@ -246,6 +250,7 @@ model MessageStarred {
 
   // Relations
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation("UserStarredMessages", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId])
   @@index([userId, starredAt])
@@ -266,6 +271,7 @@ model MessagePinned {
   // Relations
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
   chat    Chat    @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  pinner  User    @relation("UserPinnedMessages", fields: [pinnedBy], references: [id], onDelete: Cascade)
 
   @@index([chatId, pinnedAt])
   @@map("message_pinned")
