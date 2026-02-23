@@ -134,8 +134,9 @@ model Chat {
   // Relations
   creator  User         @relation("ChatCreator", fields: [createdBy], references: [id])
   org      Organization @relation(fields: [orgId], references: [id])
-  members  ChatMember[]
-  messages Message[]
+  members        ChatMember[]
+  messages       Message[]
+  pinnedMessages MessagePinned[]
 
   @@index([createdBy])
   @@index([orgId])
@@ -148,6 +149,7 @@ model ChatMember {
   userId   String         @map("user_id")
   role     ChatMemberRole @default(MEMBER)
   joinedAt DateTime       @default(now()) @map("joined_at")
+  pinnedAt DateTime?      @map("pinned_at")
 
   // Relations
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -173,16 +175,22 @@ model Message {
   replyToId String?     @map("reply_to_id")
   duration  Int?
   isTask    Boolean     @default(false) @map("is_task")
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
+  editedAt           DateTime?   @map("edited_at")
+  deletedAt          DateTime?   @map("deleted_at")
+  deletedForEveryone Boolean     @default(false) @map("deleted_for_everyone")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
 
   // Relations
-  chat      Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  sender    User          @relation(fields: [senderId], references: [id])
-  replyTo   Message?      @relation("MessageReplies", fields: [replyToId], references: [id])
-  replies   Message[]     @relation("MessageReplies")
+  chat      Chat                @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender    User                @relation(fields: [senderId], references: [id])
+  replyTo   Message?            @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies   Message[]           @relation("MessageReplies")
   task      Task?
   readBy    MessageRead[]
+  deletedFor MessageDeletedFor[]
+  starredBy  MessageStarred[]
+  pinnedIn   MessagePinned?
 
   @@index([chatId, createdAt(sort: Desc)])
   @@index([senderId])
@@ -206,6 +214,61 @@ model MessageRead {
   @@unique([messageId, userId])
   @@index([userId, readAt])
   @@map("message_reads")
+}
+
+// ============================================
+// MESSAGE DELETION TRACKING (per-user "delete for me")
+// ============================================
+
+model MessageDeletedFor {
+  id        String   @id @default(cuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  deletedAt DateTime @default(now()) @map("deleted_at")
+
+  // Relations
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@map("message_deleted_for")
+}
+
+// ============================================
+// MESSAGE STAR/BOOKMARK TRACKING (per-user)
+// ============================================
+
+model MessageStarred {
+  id        String   @id @default(cuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  starredAt DateTime @default(now()) @map("starred_at")
+
+  // Relations
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, starredAt])
+  @@map("message_starred")
+}
+
+// ============================================
+// MESSAGE PIN TRACKING (chat-level, visible to all)
+// ============================================
+
+model MessagePinned {
+  id        String   @id @default(cuid())
+  messageId String   @unique @map("message_id")
+  chatId    String   @map("chat_id")
+  pinnedBy  String   @map("pinned_by")
+  pinnedAt  DateTime @default(now()) @map("pinned_at")
+
+  // Relations
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  chat    Chat    @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, pinnedAt])
+  @@map("message_pinned")
 }
 
 // ============================================

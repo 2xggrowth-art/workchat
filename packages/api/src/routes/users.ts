@@ -39,23 +39,28 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/', {
     preHandler: [authenticate],
   }, async (request) => {
-    const { query } = searchSchema.parse(request.query)
+    const queryParam = (request.query as Record<string, string>).query
     const currentUserId = request.user.id
 
     // Look up current user to get orgId
     const currentUser = await prisma.user.findUnique({ where: { id: currentUserId } })
     if (!currentUser) throw new NotFoundError('User')
 
+    const whereClause: any = {
+      status: 'ACTIVE',
+      orgId: currentUser.orgId,
+      id: { not: currentUserId },
+    }
+
+    if (queryParam) {
+      whereClause.OR = [
+        { name: { contains: queryParam, mode: 'insensitive' } },
+        { phone: { contains: queryParam } },
+      ]
+    }
+
     const users = await prisma.user.findMany({
-      where: {
-        OR: [
-          { name: { contains: query, mode: 'insensitive' } },
-          { phone: { contains: query } },
-        ],
-        status: 'ACTIVE',
-        orgId: currentUser.orgId,
-        id: { not: currentUserId }, // Exclude self
-      },
+      where: whereClause,
       select: {
         id: true,
         phone: true,
@@ -64,7 +69,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         emoji: true,
         createdAt: true,
       },
-      take: 20,
+      take: 50,
       orderBy: { name: 'asc' },
     })
 

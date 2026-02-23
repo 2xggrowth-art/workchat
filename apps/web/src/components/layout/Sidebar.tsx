@@ -259,6 +259,7 @@ function ChatListItem({ chat, currentUserId, isActive, onClick }: ChatListItemPr
 
   const getPreview = () => {
     if (!chat.lastMessage) return 'No messages yet'
+    if (chat.lastMessage.deletedForEveryone) return 'This message was deleted'
     if (chat.lastMessage.type !== 'TEXT') {
       const labels: Record<string, string> = { AUDIO: 'Voice message', IMAGE: 'Photo', VIDEO: 'Video', FILE: 'Document' }
       return labels[chat.lastMessage.type] || chat.lastMessage.content

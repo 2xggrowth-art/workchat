@@ -33,6 +33,7 @@ function getChatDisplayName(chat: Chat, currentUserId: string): string {
 
 function getLastMessagePreview(chat: Chat): string {
   if (!chat.lastMessage) return ''
+  if (chat.lastMessage.deletedForEveryone) return 'This message was deleted'
   const sender = chat.lastMessage.sender?.name
   const prefix = chat.type === ChatType.GROUP && sender ? `${sender}: ` : ''
   if (chat.lastMessage.isTask) return `${prefix}[Task] ${chat.lastMessage.task?.title || ''}`

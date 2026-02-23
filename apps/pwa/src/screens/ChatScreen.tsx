@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronLeft, Plus, Send, Phone, FileText, X, Mic, Square, Search, Filter } from 'lucide-react'
+import { ChevronLeft, Plus, Send, Phone, FileText, X, Mic, Square, Search, Filter, Pencil, Star, Pin } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import TaskCard from '../components/TaskCard'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
@@ -45,15 +45,18 @@ const TASK_FILTER_OPTIONS = ['All', 'Pending', 'In Progress', 'Overdue', 'Comple
 
 export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, onConvertToTask }: ChatScreenProps) {
   const [text, setText] = useState('')
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: string; isTask: boolean; text: string } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: string; isTask: boolean; text: string; senderId: string; msgType: string; deletedForEveryone: boolean; createdAt: string; isStarred: boolean; isPinned: boolean } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [replyTo, setReplyTo] = useState<{ id: string; text: string } | null>(null)
+  const [editingMsg, setEditingMsg] = useState<{ id: string; chatId: string; text: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const user = useAuthStore((s) => s.user)
-  const { messages, fetchMessages, addMessage } = useChatStore()
+  const { messages, fetchMessages, addMessage, updateMessage, editMessage, deleteMessageForMe, deleteMessageForEveryone, markMessageDeletedForEveryone, removeMessage, starMessage, toggleMessageStar, pinMessage, toggleMessagePin } = useChatStore()
   const chatMessages = messages[chat.id] || []
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+  const myMembership = chat.members?.find((m) => m.userId === user?.id)
+  const canPin = chat.type === ChatType.DIRECT || myMembership?.role === 'OWNER' || myMembership?.role === 'ADMIN'
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Voice recording state
@@ -112,14 +115,34 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
         })
       }
     }
+    const editHandler = (data: { chatId: string; message: Message }) => {
+      if (data.chatId === chat.id) updateMessage(chat.id, data.message)
+    }
+    const deleteForEveryoneHandler = (data: { chatId: string; messageId: string }) => {
+      if (data.chatId === chat.id) markMessageDeletedForEveryone(chat.id, data.messageId)
+    }
+    const pinnedHandler = (data: { chatId: string; messageId: string }) => {
+      if (data.chatId === chat.id) toggleMessagePin(chat.id, data.messageId, true)
+    }
+    const unpinnedHandler = (data: { chatId: string; messageId: string }) => {
+      if (data.chatId === chat.id) toggleMessagePin(chat.id, data.messageId, false)
+    }
     socket?.on('new_message', handler)
     socket?.on('typing', typingHandler)
     socket?.on('messages_read', readHandler)
+    socket?.on('message_edited', editHandler)
+    socket?.on('message_deleted_for_everyone', deleteForEveryoneHandler)
+    socket?.on('message_pinned', pinnedHandler)
+    socket?.on('message_unpinned', unpinnedHandler)
     return () => {
       leaveChat(chat.id)
       socket?.off('new_message', handler)
       socket?.off('typing', typingHandler)
       socket?.off('messages_read', readHandler)
+      socket?.off('message_edited', editHandler)
+      socket?.off('message_deleted_for_everyone', deleteForEveryoneHandler)
+      socket?.off('message_pinned', pinnedHandler)
+      socket?.off('message_unpinned', unpinnedHandler)
     }
   }, [chat.id])
 
@@ -141,6 +164,16 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
     const trimmed = text.trim()
     if (!trimmed) return
     setText('')
+    if (editingMsg) {
+      const msg = editingMsg
+      setEditingMsg(null)
+      try {
+        await editMessage(msg.id, msg.chatId, trimmed)
+      } catch {
+        // edit failed
+      }
+      return
+    }
     const replyId = replyTo?.id
     setReplyTo(null)
     try {
@@ -275,7 +308,7 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
     }, 500)
   }
 
-  const startLongPress = (e: React.TouchEvent, msgId: string, isTask: boolean, msgText: string) => {
+  const startLongPress = (e: React.TouchEvent, msgId: string, isTask: boolean, msgText: string, senderId: string, msgType: string, deletedForEveryone: boolean, createdAt: string, isStarred: boolean, isPinned: boolean) => {
     longPressTimerRef.current = setTimeout(() => {
       const touch = e.touches[0]
       setContextMenu({
@@ -284,6 +317,12 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
         msgId,
         isTask,
         text: msgText,
+        senderId,
+        msgType,
+        deletedForEveryone,
+        createdAt,
+        isStarred,
+        isPinned,
       })
     }, 500)
   }
@@ -295,7 +334,7 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
     }
   }
 
-  const handleContextMenu = (e: React.MouseEvent, msgId: string, isTask: boolean, msgText: string) => {
+  const handleContextMenu = (e: React.MouseEvent, msgId: string, isTask: boolean, msgText: string, senderId: string, msgType: string, deletedForEveryone: boolean, createdAt: string, isStarred: boolean, isPinned: boolean) => {
     e.preventDefault()
     setContextMenu({
       x: Math.min(e.clientX, window.innerWidth - 220),
@@ -303,6 +342,12 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
       msgId,
       isTask,
       text: msgText,
+      senderId,
+      msgType,
+      deletedForEveryone,
+      createdAt,
+      isStarred,
+      isPinned,
     })
   }
 
@@ -448,6 +493,32 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
         </div>
       )}
 
+      {/* Pinned messages banner */}
+      {(() => {
+        const pinnedMsgs = chatMessages.filter((m) => m.isPinned)
+        if (pinnedMsgs.length === 0) return null
+        return (
+          <div
+            className="bg-white dark:bg-[#202C33] border-b border-black/[0.08] dark:border-white/[0.1] px-3 py-2 flex items-center gap-2 shrink-0 cursor-pointer active:bg-gray-50 dark:active:bg-[#2A3942]"
+            onClick={() => {
+              const el = document.getElementById(`msg-${pinnedMsgs[0].id}`)
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                el.classList.add('bg-yellow-100', 'dark:bg-yellow-900/30')
+                setTimeout(() => el.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/30'), 2000)
+              }
+            }}
+          >
+            <Pin size={14} className="text-blue-500 shrink-0" />
+            <div className="flex-1 min-w-0 text-[14px] text-gray-600 dark:text-gray-300 truncate">
+              {pinnedMsgs.length === 1
+                ? pinnedMsgs[0].content || 'Pinned message'
+                : `${pinnedMsgs.length} pinned messages`}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto -webkit-overflow-scrolling-touch px-3 py-2">
         {groupedMessages.map((group, gi) => (
@@ -471,15 +542,17 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
                           ? 'bg-sent dark:bg-[#056162] dark:text-white rounded-tr-sm'
                           : 'bg-white dark:bg-[#202C33] dark:text-[#E9EDEF] rounded-tl-sm'
                       }`}
-                      onContextMenu={(e) => handleContextMenu(e, msg.id, false, msg.content || '')}
-                      onTouchStart={(e) => startLongPress(e, msg.id, false, msg.content || '')}
+                      onContextMenu={(e) => handleContextMenu(e, msg.id, false, msg.content || '', msg.senderId, msg.type, !!msg.deletedForEveryone, msg.createdAt, !!msg.isStarred, !!msg.isPinned)}
+                      onTouchStart={(e) => startLongPress(e, msg.id, false, msg.content || '', msg.senderId, msg.type, !!msg.deletedForEveryone, msg.createdAt, !!msg.isStarred, !!msg.isPinned)}
                       onTouchEnd={cancelLongPress}
                       onTouchMove={cancelLongPress}
                     >
                       {!isSent && chat.type === ChatType.GROUP && (
                         <div className="text-[13px] font-semibold text-teal-light mb-0.5">{msg.sender?.name}</div>
                       )}
-                      {msg.type === MessageType.IMAGE && msg.fileUrl ? (
+                      {msg.deletedForEveryone ? (
+                        <span className="text-gray-400 italic text-[15px]">This message was deleted</span>
+                      ) : msg.type === MessageType.IMAGE && msg.fileUrl ? (
                         <img src={msg.fileUrl} alt={msg.content || ''} className="max-w-full rounded-lg" />
                       ) : msg.type === MessageType.VIDEO && msg.fileUrl ? (
                         <video src={msg.fileUrl} controls className="max-w-full rounded-lg" />
@@ -494,6 +567,9 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
                         <span className="dark:text-white">{msg.content}</span>
                       )}
                       <div className="flex items-center justify-end gap-1 mt-0.5">
+                        {msg.isPinned && <Pin size={10} className="text-gray-400" />}
+                        {msg.isStarred && <Star size={10} className="text-yellow-500 fill-yellow-500" />}
+                        {msg.editedAt && !msg.deletedForEveryone && <span className="text-[11px] text-gray-400 italic">edited</span>}
                         <span className="text-[11px] text-gray-400">{msg.createdAt ? format(parseISO(msg.createdAt), 'h:mm a') : ''}</span>
                         {isSent && (
                           <span className={`text-[12px] ${readStatus === 'read' ? 'text-blue-500' : 'text-gray-400'}`}>
@@ -526,11 +602,25 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
       )}
 
       {/* Reply preview */}
-      {replyTo && (
+      {replyTo && !editingMsg && (
         <div className="bg-gray-100 dark:bg-[#2C2C2E] border-t border-black/[0.08] dark:border-white/[0.1] px-3 py-2 flex items-center gap-2 shrink-0">
           <div className="w-1 h-8 bg-teal rounded-full shrink-0" />
           <div className="flex-1 min-w-0 text-[14px] text-gray-500 dark:text-gray-400 truncate">{replyTo.text}</div>
           <button onClick={() => setReplyTo(null)} className="shrink-0 text-gray-400 p-0.5">
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
+      {/* Edit preview */}
+      {editingMsg && (
+        <div className="bg-gray-100 dark:bg-[#2C2C2E] border-t border-black/[0.08] dark:border-white/[0.1] px-3 py-2 flex items-center gap-2 shrink-0">
+          <Pencil size={16} className="text-blue-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-semibold text-blue-500">Editing</div>
+            <div className="text-[14px] text-gray-500 dark:text-gray-400 truncate">{editingMsg.text}</div>
+          </div>
+          <button onClick={() => { setEditingMsg(null); setText('') }} className="shrink-0 text-gray-400 p-0.5">
             <X size={18} />
           </button>
         </div>
@@ -552,7 +642,7 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
         </div>
       ) : (
         /* Input */
-        <div className={`bg-gray-100 dark:bg-[#2C2C2E] ${replyTo ? '' : 'border-t border-black/[0.08] dark:border-white/[0.1]'} px-2 py-1.5 pb-safe flex items-end gap-1.5 shrink-0`}>
+        <div className={`bg-gray-100 dark:bg-[#2C2C2E] ${replyTo || editingMsg ? '' : 'border-t border-black/[0.08] dark:border-white/[0.1]'} px-2 py-1.5 pb-safe flex items-end gap-1.5 shrink-0`}>
           <button
             className="w-9 h-9 flex items-center justify-center text-blue-500 shrink-0"
             onClick={() => fileInputRef.current?.click()}
@@ -609,23 +699,91 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
             className="fixed bg-white dark:bg-[#2C2C2E] rounded-[14px] shadow-lg z-[90] min-w-[200px] overflow-hidden"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
-            <button onClick={() => { setReplyTo({ id: contextMenu.msgId, text: contextMenu.text }); setContextMenu(null) }} className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left dark:text-white active:bg-gray-100 dark:active:bg-gray-700">
-              Reply
-            </button>
-            {!contextMenu.isTask && isAdmin && (
-              <button
-                onClick={() => {
-                  onConvertToTask(contextMenu.msgId, contextMenu.text)
-                  setContextMenu(null)
-                }}
-                className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left border-t border-black/[0.08] dark:border-white/[0.1] dark:text-white active:bg-gray-100 dark:active:bg-gray-700"
-              >
-                Convert to Task
-              </button>
+            {!contextMenu.deletedForEveryone && (
+              <>
+                <button onClick={() => { setReplyTo({ id: contextMenu.msgId, text: contextMenu.text }); setContextMenu(null) }} className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left dark:text-white active:bg-gray-100 dark:active:bg-gray-700">
+                  Reply
+                </button>
+                {contextMenu.senderId === user?.id && contextMenu.msgType === 'TEXT' && !contextMenu.isTask && (
+                  <button
+                    onClick={() => {
+                      setEditingMsg({ id: contextMenu.msgId, chatId: chat.id, text: contextMenu.text })
+                      setText(contextMenu.text)
+                      setReplyTo(null)
+                      setContextMenu(null)
+                    }}
+                    className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left border-t border-black/[0.08] dark:border-white/[0.1] dark:text-white active:bg-gray-100 dark:active:bg-gray-700"
+                  >
+                    Edit
+                  </button>
+                )}
+                {!contextMenu.isTask && isAdmin && (
+                  <button
+                    onClick={() => {
+                      onConvertToTask(contextMenu.msgId, contextMenu.text)
+                      setContextMenu(null)
+                    }}
+                    className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left border-t border-black/[0.08] dark:border-white/[0.1] dark:text-white active:bg-gray-100 dark:active:bg-gray-700"
+                  >
+                    Convert to Task
+                  </button>
+                )}
+                <button onClick={() => { navigator.clipboard.writeText(contextMenu.text); setContextMenu(null) }} className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left border-t border-black/[0.08] dark:border-white/[0.1] dark:text-white active:bg-gray-100 dark:active:bg-gray-700">
+                  Copy
+                </button>
+                <button
+                  onClick={() => {
+                    starMessage(contextMenu.msgId, chat.id)
+                    setContextMenu(null)
+                  }}
+                  className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left border-t border-black/[0.08] dark:border-white/[0.1] dark:text-white active:bg-gray-100 dark:active:bg-gray-700"
+                >
+                  <Star size={16} className={contextMenu.isStarred ? 'text-yellow-500 fill-yellow-500' : ''} />
+                  {contextMenu.isStarred ? 'Unstar' : 'Star'}
+                </button>
+                {canPin && (
+                  <button
+                    onClick={() => {
+                      pinMessage(contextMenu.msgId, chat.id)
+                      setContextMenu(null)
+                    }}
+                    className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left border-t border-black/[0.08] dark:border-white/[0.1] dark:text-white active:bg-gray-100 dark:active:bg-gray-700"
+                  >
+                    <Pin size={16} className={contextMenu.isPinned ? 'text-blue-500' : ''} />
+                    {contextMenu.isPinned ? 'Unpin' : 'Pin'}
+                  </button>
+                )}
+              </>
             )}
-            <button onClick={() => { navigator.clipboard.writeText(contextMenu.text); setContextMenu(null) }} className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left border-t border-black/[0.08] dark:border-white/[0.1] dark:text-white active:bg-gray-100 dark:active:bg-gray-700">
-              Copy
-            </button>
+            {!contextMenu.isTask && (
+              <>
+                <button
+                  onClick={() => {
+                    if (window.confirm('Delete this message for you?')) {
+                      deleteMessageForMe(contextMenu.msgId, chat.id)
+                    }
+                    setContextMenu(null)
+                  }}
+                  className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left border-t border-black/[0.08] dark:border-white/[0.1] text-red-500 active:bg-gray-100 dark:active:bg-gray-700"
+                >
+                  Delete for me
+                </button>
+                {contextMenu.senderId === user?.id && !contextMenu.deletedForEveryone &&
+                  Date.now() - new Date(contextMenu.createdAt).getTime() < 60 * 60 * 1000 && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Delete this message for everyone? This cannot be undone.')) {
+                        deleteMessageForEveryone(contextMenu.msgId, chat.id)
+                      }
+                      setContextMenu(null)
+                    }}
+                    className="flex items-center gap-2.5 px-4 py-3 text-[16px] w-full text-left border-t border-black/[0.08] dark:border-white/[0.1] text-red-500 active:bg-gray-100 dark:active:bg-gray-700"
+                  >
+                    Delete for everyone
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </>
       )}

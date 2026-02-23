@@ -35,9 +35,15 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        api.post('/api/auth/logout').catch(() => {})
+        const { token } = get()
         disconnectSocket()
         set({ user: null, token: null, refreshToken: null })
+        if (token) {
+          api.post('/api/auth/logout', {}, {
+            headers: { Authorization: `Bearer ${token}` },
+            _skipInterceptor: true,
+          } as any).catch(() => {})
+        }
       },
 
       refreshAccessToken: async () => {
