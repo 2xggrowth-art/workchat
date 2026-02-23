@@ -413,6 +413,11 @@ export const messageRoutes: FastifyPluginAsync = async (fastify) => {
       throw new ForbiddenError('Only text messages can be edited')
     }
 
+    const FIFTEEN_MIN_MS = 15 * 60 * 1000
+    if (Date.now() - new Date(message.createdAt).getTime() > FIFTEEN_MIN_MS) {
+      throw new ForbiddenError('You can only edit messages within 15 minutes of sending')
+    }
+
     const updated = await prisma.message.update({
       where: { id: messageId },
       data: {

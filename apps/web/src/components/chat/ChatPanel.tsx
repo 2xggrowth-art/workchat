@@ -908,7 +908,8 @@ export default function ChatPanel() {
                 </button>
                 {(() => {
                   const msg = messages.find((m: any) => m.id === contextMenu.msgId)
-                  return msg && msg.senderId === user?.id && msg.type === MessageType.TEXT && !msg.isTask
+                  return msg && msg.senderId === user?.id && msg.type === MessageType.TEXT && !msg.isTask &&
+                    Date.now() - new Date(msg.createdAt).getTime() < 15 * 60 * 1000
                 })() && (
                   <button
                     onClick={() => {
