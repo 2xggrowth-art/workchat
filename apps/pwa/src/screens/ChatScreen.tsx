@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronLeft, Plus, Send, Phone, FileText, X, Mic, Square, Search, Filter, Pencil, Star, Pin } from 'lucide-react'
+import { ChevronLeft, Plus, Send, FileText, X, Mic, Square, Search, Filter, Pencil, Star, Pin, MoreVertical, Users, LogOut } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import TaskCard from '../components/TaskCard'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
@@ -69,6 +69,9 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
   // Typing indicator state
   const [typingUsers, setTypingUsers] = useState<string[]>([])
   const lastTypingEmitRef = useRef(0)
+
+  // Kebab menu state
+  const [showKebabMenu, setShowKebabMenu] = useState(false)
 
   // Search state
   const [showSearch, setShowSearch] = useState(false)
@@ -431,9 +434,60 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
           >
             <Search size={20} />
           </button>
-          <button className="text-blue-500 p-2 opacity-40" onClick={() => alert('Calling is not available in MVP')}>
-            <Phone size={20} />
-          </button>
+          <div className="relative">
+            <button className="text-blue-500 p-2" onClick={() => setShowKebabMenu(!showKebabMenu)}>
+              <MoreVertical size={20} />
+            </button>
+            {showKebabMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowKebabMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-[#1C1C1E] rounded-xl shadow-lg py-1.5 z-50">
+                  {chat.type === ChatType.GROUP && (
+                    <button
+                      onClick={() => { setShowKebabMenu(false); onGroupInfo() }}
+                      className="w-full text-left px-4 py-2.5 text-[15px] dark:text-white active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                    >
+                      <Users size={18} className="text-gray-500" />
+                      Group info
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setShowKebabMenu(false); setShowSearch(true) }}
+                    className="w-full text-left px-4 py-2.5 text-[15px] dark:text-white active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                  >
+                    <Search size={18} className="text-gray-500" />
+                    Search messages
+                  </button>
+                  <button
+                    onClick={() => { setShowKebabMenu(false); onBack() }}
+                    className="w-full text-left px-4 py-2.5 text-[15px] dark:text-white active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                  >
+                    <X size={18} className="text-gray-500" />
+                    Close chat
+                  </button>
+                  {chat.type === ChatType.GROUP && (
+                    <>
+                      <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] my-1" />
+                      <button
+                        onClick={async () => {
+                          setShowKebabMenu(false)
+                          if (!confirm('Are you sure you want to exit this group?')) return
+                          try {
+                            await api.post(`/api/chats/${chat.id}/leave`)
+                            onBack()
+                          } catch {}
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-[15px] text-red-500 active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                      >
+                        <LogOut size={18} />
+                        Exit group
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

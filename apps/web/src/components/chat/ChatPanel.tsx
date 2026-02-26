@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore, useIsAdmin } from '../../stores/authStore'
 import { api } from '../../services/api'
@@ -37,6 +37,8 @@ export default function ChatPanel() {
   const lastTypingEmitRef = useRef<number>(0)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [showGroupInfo, setShowGroupInfo] = useState(false)
+  const [showKebabMenu, setShowKebabMenu] = useState(false)
+  const navigate = useNavigate()
 
   // Search state
   const [showSearch, setShowSearch] = useState(false)
@@ -518,7 +520,7 @@ export default function ChatPanel() {
             </svg>
           ) : chatHeaderName.charAt(0).toUpperCase()}
         </div>
-        <button className="flex-1 min-w-0 text-left" onClick={() => chat?.type === 'GROUP' && setShowGroupInfo(!showGroupInfo)}>
+        <button className={`flex-1 min-w-0 text-left ${chat?.type === 'GROUP' ? 'cursor-pointer' : ''}`} onClick={() => chat?.type === 'GROUP' && setShowGroupInfo(!showGroupInfo)}>
           <div className="text-white font-medium text-[16px] truncate">{chatHeaderName}</div>
           <div className="text-white/70 text-xs truncate">
             {typingUsers.length > 0
@@ -548,6 +550,75 @@ export default function ChatPanel() {
               <path d="M15.009 13.805h-.636l-.22-.219a5.184 5.184 0 001.256-3.386 5.207 5.207 0 10-5.207 5.208 5.183 5.183 0 003.385-1.255l.221.22v.635l4.004 3.999 1.194-1.195-3.997-4.007zm-4.808 0a3.605 3.605 0 110-7.21 3.605 3.605 0 010 7.21z"/>
             </svg>
           </button>
+          {/* 3-dot kebab menu */}
+          <div className="relative">
+            <button
+              onClick={() => setShowKebabMenu(!showKebabMenu)}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${showKebabMenu ? 'bg-white/15 text-[#25D366]' : 'text-[#aebac1] hover:bg-white/10 hover:text-white'}`}
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 7a2 2 0 100-4 2 2 0 000 4zm0 7a2 2 0 100-4 2 2 0 000 4zm0 7a2 2 0 100-4 2 2 0 000 4z"/>
+              </svg>
+            </button>
+            {showKebabMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowKebabMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#233138] rounded-md shadow-lg py-2 z-50">
+                  {chat?.type === 'GROUP' && (
+                    <button
+                      onClick={() => { setShowKebabMenu(false); setShowGroupInfo(true) }}
+                      className="w-full text-left px-5 py-2.5 text-[14px] text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                    >
+                      <svg className="w-4 h-4 text-gray-500 dark:text-[#8696A0]" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                      </svg>
+                      Group info
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setShowKebabMenu(false); setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 100) }}
+                    className="w-full text-left px-5 py-2.5 text-[14px] text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                  >
+                    <svg className="w-4 h-4 text-gray-500 dark:text-[#8696A0]" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M15.009 13.805h-.636l-.22-.219a5.184 5.184 0 001.256-3.386 5.207 5.207 0 10-5.207 5.208 5.183 5.183 0 003.385-1.255l.221.22v.635l4.004 3.999 1.194-1.195-3.997-4.007zm-4.808 0a3.605 3.605 0 110-7.21 3.605 3.605 0 010 7.21z"/>
+                    </svg>
+                    Search messages
+                  </button>
+                  <button
+                    onClick={() => { setShowKebabMenu(false); navigate('/') }}
+                    className="w-full text-left px-5 py-2.5 text-[14px] text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                  >
+                    <svg className="w-4 h-4 text-gray-500 dark:text-[#8696A0]" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                    Close chat
+                  </button>
+                  {chat?.type === 'GROUP' && (
+                    <>
+                      <div className="h-px bg-gray-200 dark:bg-[#374045] my-1" />
+                      <button
+                        onClick={async () => {
+                          setShowKebabMenu(false)
+                          if (!confirm('Are you sure you want to exit this group?')) return
+                          try {
+                            await api.post(`/api/chats/${chatId}/leave`)
+                            queryClient.invalidateQueries({ queryKey: ['chats'] })
+                            navigate('/')
+                          } catch {}
+                        }}
+                        className="w-full text-left px-5 py-2.5 text-[14px] text-red-500 hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+                        </svg>
+                        Exit group
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
