@@ -16,6 +16,8 @@ import NewChatScreen from './src/screens/NewChatScreen'
 import NewGroupScreen from './src/screens/NewGroupScreen'
 import AdminSummaryScreen from './src/screens/AdminSummaryScreen'
 import MembersScreen from './src/screens/MembersScreen'
+import GroupInfoScreen from './src/screens/GroupInfoScreen'
+import ContactInfoScreen from './src/screens/ContactInfoScreen'
 import Header from './src/components/ui/Header'
 import { useAuthStore } from './src/stores/authStore'
 import { useChatStore } from './src/stores/chatStore'
@@ -198,6 +200,8 @@ function RootNavigator() {
           <Stack.Screen name="NewGroup" component={NewGroupScreen} />
           <Stack.Screen name="AdminSummary" component={AdminSummaryScreen} />
           <Stack.Screen name="Members" component={MembersScreen} />
+          <Stack.Screen name="GroupInfo" component={GroupInfoScreen} />
+          <Stack.Screen name="ContactInfo" component={ContactInfoScreen} />
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />

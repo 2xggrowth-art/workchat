@@ -143,6 +143,9 @@ export default function ChatScreen() {
   const [searchResults, setSearchResults] = useState<Message[]>([])
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Kebab menu state
+  const [showKebabMenu, setShowKebabMenu] = useState(false)
+
   // Upload state
   const [uploading, setUploading] = useState(false)
 
@@ -870,21 +873,32 @@ export default function ChatScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backIcon}>{'<'}</Text>
         </TouchableOpacity>
-        <View style={[styles.headerAvatar, chat?.type === 'GROUP' && styles.groupAvatar]}>
-          <Text style={styles.headerAvatarText}>
-            {chat?.type === 'GROUP' ? 'G' : getDisplayName().charAt(0).toUpperCase()}
-          </Text>
-        </View>
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerName} numberOfLines={1}>{getDisplayName()}</Text>
-          {typingUsers.length > 0 ? (
-            <Text style={styles.headerTyping}>
-              {typingUsers.join(', ')} typing...
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+          onPress={() => {
+            if (chat?.type === 'GROUP') {
+              (navigation as any).navigate('GroupInfo', { chatId })
+            } else {
+              (navigation as any).navigate('ContactInfo', { chatId })
+            }
+          }}
+        >
+          <View style={[styles.headerAvatar, chat?.type === 'GROUP' && styles.groupAvatar]}>
+            <Text style={styles.headerAvatarText}>
+              {chat?.type === 'GROUP' ? 'G' : getDisplayName().charAt(0).toUpperCase()}
             </Text>
-          ) : chat?.type === 'GROUP' ? (
-            <Text style={styles.headerStatus}>{getMemberCount()}</Text>
-          ) : null}
-        </View>
+          </View>
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerName} numberOfLines={1}>{getDisplayName()}</Text>
+            {typingUsers.length > 0 ? (
+              <Text style={styles.headerTyping}>
+                {typingUsers.join(', ')} typing...
+              </Text>
+            ) : chat?.type === 'GROUP' ? (
+              <Text style={styles.headerStatus}>{getMemberCount()}</Text>
+            ) : null}
+          </View>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.headerAction}
           onPress={() => setShowSearch(!showSearch)}
@@ -896,6 +910,12 @@ export default function ChatScreen() {
           onPress={() => setTaskFilterActive(!taskFilterActive)}
         >
           <Text style={[styles.headerActionIcon, taskFilterActive && { color: '#25D366' }]}>F</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.headerAction}
+          onPress={() => setShowKebabMenu(true)}
+        >
+          <Text style={styles.headerActionIcon}>⋮</Text>
         </TouchableOpacity>
       </View>
 
@@ -1077,6 +1097,166 @@ export default function ChatScreen() {
               >
                 <Text style={[styles.contextMenuIcon, { color: '#128C7E' }]}>T</Text>
                 <Text style={[styles.contextMenuText, { color: '#128C7E' }]}>Convert to Task</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Kebab Menu Modal */}
+      <Modal
+        visible={showKebabMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowKebabMenu(false)}
+      >
+        <Pressable style={styles.menuOverlay} onPress={() => setShowKebabMenu(false)}>
+          <View style={styles.contextMenu}>
+            {/* Contact info / Group info */}
+            <TouchableOpacity
+              style={styles.contextMenuItem}
+              onPress={() => {
+                setShowKebabMenu(false)
+                if (chat?.type === 'GROUP') {
+                  (navigation as any).navigate('GroupInfo', { chatId })
+                } else {
+                  (navigation as any).navigate('ContactInfo', { chatId })
+                }
+              }}
+            >
+              <Text style={styles.contextMenuIcon}>{chat?.type === 'GROUP' ? 'G' : 'i'}</Text>
+              <Text style={styles.contextMenuText}>{chat?.type === 'GROUP' ? 'Group info' : 'Contact info'}</Text>
+            </TouchableOpacity>
+            {/* Search messages */}
+            <TouchableOpacity
+              style={styles.contextMenuItem}
+              onPress={() => { setShowKebabMenu(false); setShowSearch(true) }}
+            >
+              <Text style={styles.contextMenuIcon}>S</Text>
+              <Text style={styles.contextMenuText}>Search messages</Text>
+            </TouchableOpacity>
+            {/* Add to favourites */}
+            <TouchableOpacity
+              style={styles.contextMenuItem}
+              onPress={async () => {
+                setShowKebabMenu(false)
+                try {
+                  await api.post(`/api/chats/${chatId}/favourite`)
+                } catch {}
+              }}
+            >
+              <Text style={styles.contextMenuIcon}>★</Text>
+              <Text style={styles.contextMenuText}>Add to favourites</Text>
+            </TouchableOpacity>
+            {/* Close chat */}
+            <TouchableOpacity
+              style={styles.contextMenuItem}
+              onPress={() => { setShowKebabMenu(false); navigation.goBack() }}
+            >
+              <Text style={styles.contextMenuIcon}>✕</Text>
+              <Text style={styles.contextMenuText}>Close chat</Text>
+            </TouchableOpacity>
+            {/* Report */}
+            <TouchableOpacity
+              style={styles.contextMenuItem}
+              onPress={() => {
+                setShowKebabMenu(false)
+                Alert.alert('Report Submitted', 'We will review this chat.', [{ text: 'OK' }])
+              }}
+            >
+              <Text style={styles.contextMenuIcon}>⚑</Text>
+              <Text style={styles.contextMenuText}>Report</Text>
+            </TouchableOpacity>
+            {/* Block (1:1 only) */}
+            {chat?.type === 'DIRECT' && (
+              <TouchableOpacity
+                style={styles.contextMenuItem}
+                onPress={() => {
+                  setShowKebabMenu(false)
+                  Alert.alert('Block Contact', 'Block this contact? They will no longer be able to send you messages.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Block',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try { await api.post(`/api/chats/${chatId}/block`) } catch {}
+                      },
+                    },
+                  ])
+                }}
+              >
+                <Text style={styles.contextMenuIcon}>⊘</Text>
+                <Text style={styles.contextMenuText}>Block</Text>
+              </TouchableOpacity>
+            )}
+            {/* Divider */}
+            <View style={styles.kebabDivider} />
+            {/* Clear chat */}
+            <TouchableOpacity
+              style={styles.contextMenuItem}
+              onPress={() => {
+                setShowKebabMenu(false)
+                Alert.alert('Clear Chat', 'Clear all messages in this chat? This cannot be undone.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Clear',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try { await api.post(`/api/chats/${chatId}/clear`) } catch {}
+                    },
+                  },
+                ])
+              }}
+            >
+              <Text style={[styles.contextMenuIcon, styles.contextMenuDanger]}>✕</Text>
+              <Text style={[styles.contextMenuText, styles.contextMenuDanger]}>Clear chat</Text>
+            </TouchableOpacity>
+            {/* Delete chat */}
+            <TouchableOpacity
+              style={styles.contextMenuItem}
+              onPress={() => {
+                setShowKebabMenu(false)
+                Alert.alert('Delete Chat', 'Delete this chat? All messages will be cleared and you will leave the chat.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await api.delete(`/api/chats/${chatId}`)
+                        navigation.goBack()
+                      } catch {}
+                    },
+                  },
+                ])
+              }}
+            >
+              <Text style={[styles.contextMenuIcon, styles.contextMenuDanger]}>✕</Text>
+              <Text style={[styles.contextMenuText, styles.contextMenuDanger]}>Delete chat</Text>
+            </TouchableOpacity>
+            {/* Exit group (groups only) */}
+            {chat?.type === 'GROUP' && (
+              <TouchableOpacity
+                style={styles.contextMenuItem}
+                onPress={() => {
+                  setShowKebabMenu(false)
+                  Alert.alert('Exit Group', 'Are you sure you want to exit this group?', [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Exit',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await api.post(`/api/chats/${chatId}/leave`)
+                          navigation.goBack()
+                        } catch {}
+                      },
+                    },
+                  ])
+                }}
+              >
+                <Text style={[styles.contextMenuIcon, styles.contextMenuDanger]}>→</Text>
+                <Text style={[styles.contextMenuText, styles.contextMenuDanger]}>Exit group</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -1682,6 +1862,14 @@ const styles = StyleSheet.create({
   },
   contextMenuHighlight: {
     // highlighted variant
+  },
+  kebabDivider: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginVertical: 4,
+  },
+  contextMenuDanger: {
+    color: '#EF4444',
   },
   // Reply preview bar
   replyPreviewBar: {
