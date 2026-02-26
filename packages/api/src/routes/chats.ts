@@ -103,6 +103,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           user: m.user,
           role: m.role,
           joinedAt: m.joinedAt,
+          isFavourited: m.isFavourited,
         })),
         lastMessage: lastMessage
           ? {
@@ -852,6 +853,207 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
     return {
       success: true,
       data: summary,
+    }
+  })
+
+  /**
+   * POST /api/chats/:id/favourite - Toggle favourite for current user
+   */
+  fastify.post('/:id/favourite', {
+    preHandler: [authenticate, requireChatMember('id')],
+  }, async (request) => {
+    const { id } = chatIdParamsSchema.parse(request.params)
+    const userId = request.user.id
+
+    const member = await prisma.chatMember.findUnique({
+      where: { chatId_userId: { chatId: id, userId } },
+    })
+
+    if (!member) {
+      throw new NotFoundError('Chat member')
+    }
+
+    const updated = await prisma.chatMember.update({
+      where: { chatId_userId: { chatId: id, userId } },
+      data: { isFavourited: !member.isFavourited },
+    })
+
+    return {
+      success: true,
+      data: { chatId: id, favourited: updated.isFavourited },
+    }
+  })
+
+  /**
+   * POST /api/chats/:id/clear - Clear chat for current user (soft delete all messages)
+   */
+  fastify.post('/:id/clear', {
+    preHandler: [authenticate, requireChatMember('id')],
+  }, async (request) => {
+    const { id } = chatIdParamsSchema.parse(request.params)
+    const userId = request.user.id
+
+    // Get all messages in this chat that aren't already deleted for this user
+    const messages = await prisma.message.findMany({
+      where: {
+        chatId: id,
+        deletedFor: { none: { userId } },
+      },
+      select: { id: true },
+    })
+
+    if (messages.length > 0) {
+      await prisma.messageDeletedFor.createMany({
+        data: messages.map((m) => ({
+          messageId: m.id,
+          userId,
+        })),
+        skipDuplicates: true,
+      })
+    }
+
+    return {
+      success: true,
+      data: { clearedCount: messages.length },
+    }
+  })
+
+  /**
+   * POST /api/chats/:id/block - Block the other user in a 1:1 chat
+   */
+  fastify.post('/:id/block', {
+    preHandler: [authenticate, requireChatMember('id')],
+  }, async (request) => {
+    const { id } = chatIdParamsSchema.parse(request.params)
+    const userId = request.user.id
+
+    const chat = await prisma.chat.findUnique({
+      where: { id },
+      include: { members: true },
+    })
+
+    if (!chat) {
+      throw new NotFoundError('Chat')
+    }
+
+    if (chat.type !== 'DIRECT') {
+      throw new ForbiddenError('Can only block users in direct chats')
+    }
+
+    const otherMember = chat.members.find((m) => m.userId !== userId)
+    if (!otherMember) {
+      throw new NotFoundError('Other user')
+    }
+
+    // Get current user for orgId
+    const currentUser = await prisma.user.findUnique({ where: { id: userId } })
+    if (!currentUser) {
+      throw new NotFoundError('User')
+    }
+
+    // Check if already blocked
+    const existing = await prisma.blockedUser.findUnique({
+      where: {
+        blockerId_blockedId: {
+          blockerId: userId,
+          blockedId: otherMember.userId,
+        },
+      },
+    })
+
+    if (existing) {
+      // Unblock
+      await prisma.blockedUser.delete({
+        where: { id: existing.id },
+      })
+      return {
+        success: true,
+        data: { blocked: false, blockedUserId: otherMember.userId },
+      }
+    }
+
+    // Block
+    await prisma.blockedUser.create({
+      data: {
+        blockerId: userId,
+        blockedId: otherMember.userId,
+        orgId: currentUser.orgId,
+      },
+    })
+
+    return {
+      success: true,
+      data: { blocked: true, blockedUserId: otherMember.userId },
+    }
+  })
+
+  /**
+   * DELETE /api/chats/:id - Delete chat for current user (clear + leave)
+   */
+  fastify.delete('/:id', {
+    preHandler: [authenticate, requireChatMember('id')],
+  }, async (request) => {
+    const { id } = chatIdParamsSchema.parse(request.params)
+    const userId = request.user.id
+
+    // Clear all messages for this user
+    const messages = await prisma.message.findMany({
+      where: {
+        chatId: id,
+        deletedFor: { none: { userId } },
+      },
+      select: { id: true },
+    })
+
+    if (messages.length > 0) {
+      await prisma.messageDeletedFor.createMany({
+        data: messages.map((m) => ({
+          messageId: m.id,
+          userId,
+        })),
+        skipDuplicates: true,
+      })
+    }
+
+    // Leave the chat
+    const memberRole = (request as any).memberRole as ChatMemberRole
+
+    const chat = await prisma.chat.findUnique({
+      where: { id },
+      include: { members: { orderBy: { joinedAt: 'asc' } } },
+    })
+
+    if (!chat) {
+      throw new NotFoundError('Chat')
+    }
+
+    if (chat.members.length === 1) {
+      await prisma.chat.delete({ where: { id } })
+    } else {
+      // Transfer ownership if needed
+      if (memberRole === ChatMemberRole.OWNER) {
+        const nextOwner = chat.members.find(
+          (m) => m.userId !== userId && m.role === ChatMemberRole.ADMIN
+        ) || chat.members.find((m) => m.userId !== userId)
+
+        if (nextOwner) {
+          await prisma.chatMember.update({
+            where: { chatId_userId: { chatId: id, userId: nextOwner.userId } },
+            data: { role: ChatMemberRole.OWNER },
+          })
+        }
+      }
+
+      await prisma.chatMember.delete({
+        where: { chatId_userId: { chatId: id, userId } },
+      })
+
+      fastify.io.to(`chat:${id}`).emit('member_removed', { chatId: id, userId })
+    }
+
+    return {
+      success: true,
+      data: { message: 'Chat deleted successfully' },
     }
   })
 }

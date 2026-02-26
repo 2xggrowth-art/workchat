@@ -148,11 +148,12 @@ model Chat {
 }
 
 model ChatMember {
-  chatId   String         @map("chat_id")
-  userId   String         @map("user_id")
-  role     ChatMemberRole @default(MEMBER)
-  joinedAt DateTime       @default(now()) @map("joined_at")
-  pinnedAt DateTime?      @map("pinned_at")
+  chatId       String         @map("chat_id")
+  userId       String         @map("user_id")
+  role         ChatMemberRole @default(MEMBER)
+  joinedAt     DateTime       @default(now()) @map("joined_at")
+  pinnedAt     DateTime?      @map("pinned_at")
+  isFavourited Boolean        @default(false) @map("is_favourited")
 
   // Relations
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -370,6 +371,23 @@ model TaskActivity {
   @@index([taskId, createdAt(sort: Desc)])
   @@index([userId])
   @@map("task_activities")
+}
+
+// ============================================
+// BLOCKED USER MODEL
+// ============================================
+
+model BlockedUser {
+  id        String   @id @default(cuid())
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  orgId     String   @map("org_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+  @@map("blocked_users")
 }
 
 // ============================================

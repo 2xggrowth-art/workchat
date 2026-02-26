@@ -8,6 +8,7 @@ import { formatMessageTime, formatMessageDate, MessageType, TaskStatus, TASK_STA
 import ConvertToTaskModal from './ConvertToTaskModal'
 import TaskDetailsPanel from '../task/TaskDetailsPanel'
 import GroupInfoPanel from './GroupInfoPanel'
+import ContactInfoPanel from './ContactInfoPanel'
 import VoiceRecorder from './VoiceRecorder'
 import VoiceNotePlayer from './VoiceNotePlayer'
 
@@ -37,6 +38,7 @@ export default function ChatPanel() {
   const lastTypingEmitRef = useRef<number>(0)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [showGroupInfo, setShowGroupInfo] = useState(false)
+  const [showContactInfo, setShowContactInfo] = useState(false)
   const [showKebabMenu, setShowKebabMenu] = useState(false)
   const navigate = useNavigate()
 
@@ -520,7 +522,10 @@ export default function ChatPanel() {
             </svg>
           ) : chatHeaderName.charAt(0).toUpperCase()}
         </div>
-        <button className={`flex-1 min-w-0 text-left ${chat?.type === 'GROUP' ? 'cursor-pointer' : ''}`} onClick={() => chat?.type === 'GROUP' && setShowGroupInfo(!showGroupInfo)}>
+        <button className="flex-1 min-w-0 text-left cursor-pointer" onClick={() => {
+          if (chat?.type === 'GROUP') setShowGroupInfo(!showGroupInfo)
+          else setShowContactInfo(!showContactInfo)
+        }}>
           <div className="text-white font-medium text-[16px] truncate">{chatHeaderName}</div>
           <div className="text-white/70 text-xs truncate">
             {typingUsers.length > 0
@@ -563,18 +568,26 @@ export default function ChatPanel() {
             {showKebabMenu && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowKebabMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#233138] rounded-md shadow-lg py-2 z-50">
-                  {chat?.type === 'GROUP' && (
-                    <button
-                      onClick={() => { setShowKebabMenu(false); setShowGroupInfo(true) }}
-                      className="w-full text-left px-5 py-2.5 text-[14px] text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
-                    >
-                      <svg className="w-4 h-4 text-gray-500 dark:text-[#8696A0]" fill="currentColor" viewBox="0 0 24 24">
+                <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-[#233138] rounded-md shadow-lg py-2 z-50">
+                  {/* Contact info / Group info */}
+                  <button
+                    onClick={() => {
+                      setShowKebabMenu(false)
+                      if (chat?.type === 'GROUP') setShowGroupInfo(true)
+                      else setShowContactInfo(true)
+                    }}
+                    className="w-full text-left px-5 py-2.5 text-[14px] text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                  >
+                    <svg className="w-4 h-4 text-gray-500 dark:text-[#8696A0]" fill="currentColor" viewBox="0 0 24 24">
+                      {chat?.type === 'GROUP' ? (
                         <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
-                      </svg>
-                      Group info
-                    </button>
-                  )}
+                      ) : (
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                      )}
+                    </svg>
+                    {chat?.type === 'GROUP' ? 'Group info' : 'Contact info'}
+                  </button>
+                  {/* Search messages */}
                   <button
                     onClick={() => { setShowKebabMenu(false); setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 100) }}
                     className="w-full text-left px-5 py-2.5 text-[14px] text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
@@ -584,6 +597,24 @@ export default function ChatPanel() {
                     </svg>
                     Search messages
                   </button>
+                  {/* Add to favourites */}
+                  <button
+                    onClick={async () => {
+                      setShowKebabMenu(false)
+                      try {
+                        await api.post(`/api/chats/${chatId}/favourite`)
+                        queryClient.invalidateQueries({ queryKey: ['chats'] })
+                        queryClient.invalidateQueries({ queryKey: ['chat', chatId] })
+                      } catch {}
+                    }}
+                    className="w-full text-left px-5 py-2.5 text-[14px] text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                  >
+                    <svg className="w-4 h-4 text-gray-500 dark:text-[#8696A0]" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                    </svg>
+                    Add to favourites
+                  </button>
+                  {/* Close chat */}
                   <button
                     onClick={() => { setShowKebabMenu(false); navigate('/') }}
                     className="w-full text-left px-5 py-2.5 text-[14px] text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
@@ -593,27 +624,95 @@ export default function ChatPanel() {
                     </svg>
                     Close chat
                   </button>
+                  {/* Report */}
+                  <button
+                    onClick={() => {
+                      setShowKebabMenu(false)
+                      alert('Report submitted. We will review this chat.')
+                    }}
+                    className="w-full text-left px-5 py-2.5 text-[14px] text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                  >
+                    <svg className="w-4 h-4 text-gray-500 dark:text-[#8696A0]" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/>
+                    </svg>
+                    Report
+                  </button>
+                  {/* Block (1:1 only) */}
+                  {chat?.type === 'DIRECT' && (
+                    <button
+                      onClick={async () => {
+                        setShowKebabMenu(false)
+                        if (!confirm('Block this contact? They will no longer be able to send you messages.')) return
+                        try {
+                          await api.post(`/api/chats/${chatId}/block`)
+                          queryClient.invalidateQueries({ queryKey: ['chats'] })
+                        } catch {}
+                      }}
+                      className="w-full text-left px-5 py-2.5 text-[14px] text-gray-800 dark:text-[#E9EDEF] hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                    >
+                      <svg className="w-4 h-4 text-gray-500 dark:text-[#8696A0]" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1C19.37 8.45 20 10.15 20 12c0 4.42-3.58 8-8 8z"/>
+                      </svg>
+                      Block
+                    </button>
+                  )}
+                  {/* Divider */}
+                  <div className="h-px bg-gray-200 dark:bg-[#374045] my-1" />
+                  {/* Clear chat */}
+                  <button
+                    onClick={async () => {
+                      setShowKebabMenu(false)
+                      if (!confirm('Clear all messages in this chat? This cannot be undone.')) return
+                      try {
+                        await api.post(`/api/chats/${chatId}/clear`)
+                        queryClient.invalidateQueries({ queryKey: ['messages', chatId] })
+                        queryClient.invalidateQueries({ queryKey: ['chats'] })
+                      } catch {}
+                    }}
+                    className="w-full text-left px-5 py-2.5 text-[14px] text-red-500 hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12z"/>
+                    </svg>
+                    Clear chat
+                  </button>
+                  {/* Delete chat */}
+                  <button
+                    onClick={async () => {
+                      setShowKebabMenu(false)
+                      if (!confirm('Delete this chat? All messages will be cleared and you will leave the chat.')) return
+                      try {
+                        await api.delete(`/api/chats/${chatId}`)
+                        queryClient.invalidateQueries({ queryKey: ['chats'] })
+                        navigate('/')
+                      } catch {}
+                    }}
+                    className="w-full text-left px-5 py-2.5 text-[14px] text-red-500 hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                    </svg>
+                    Delete chat
+                  </button>
+                  {/* Exit group (groups only) */}
                   {chat?.type === 'GROUP' && (
-                    <>
-                      <div className="h-px bg-gray-200 dark:bg-[#374045] my-1" />
-                      <button
-                        onClick={async () => {
-                          setShowKebabMenu(false)
-                          if (!confirm('Are you sure you want to exit this group?')) return
-                          try {
-                            await api.post(`/api/chats/${chatId}/leave`)
-                            queryClient.invalidateQueries({ queryKey: ['chats'] })
-                            navigate('/')
-                          } catch {}
-                        }}
-                        className="w-full text-left px-5 py-2.5 text-[14px] text-red-500 hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
-                        </svg>
-                        Exit group
-                      </button>
-                    </>
+                    <button
+                      onClick={async () => {
+                        setShowKebabMenu(false)
+                        if (!confirm('Are you sure you want to exit this group?')) return
+                        try {
+                          await api.post(`/api/chats/${chatId}/leave`)
+                          queryClient.invalidateQueries({ queryKey: ['chats'] })
+                          navigate('/')
+                        } catch {}
+                      }}
+                      className="w-full text-left px-5 py-2.5 text-[14px] text-red-500 hover:bg-gray-100 dark:hover:bg-[#182229] flex items-center gap-3"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+                      </svg>
+                      Exit group
+                    </button>
                   )}
                 </div>
               </>
@@ -1222,6 +1321,14 @@ export default function ChatPanel() {
         <GroupInfoPanel
           chatId={chatId}
           onClose={() => setShowGroupInfo(false)}
+        />
+      )}
+
+      {/* Contact Info Panel (1:1 chats) */}
+      {showContactInfo && chatId && chat?.type === 'DIRECT' && (
+        <ContactInfoPanel
+          chatId={chatId}
+          onClose={() => setShowContactInfo(false)}
         />
       )}
     </div>
