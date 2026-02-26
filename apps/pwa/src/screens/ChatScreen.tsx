@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronLeft, Plus, Send, FileText, X, Mic, Square, Search, Filter, Pencil, Star, Pin, MoreVertical, Users, LogOut } from 'lucide-react'
+import { ChevronLeft, Plus, Send, FileText, X, Mic, Square, Search, Filter, Pencil, Star, Pin, MoreVertical, Users, LogOut, User, Ban, Flag, Trash2 } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import TaskCard from '../components/TaskCard'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
@@ -15,6 +15,7 @@ interface ChatScreenProps {
   onBack: () => void
   onTaskDetail: (taskId: string) => void
   onGroupInfo: () => void
+  onContactInfo: () => void
   onConvertToTask: (messageId: string, messageText: string) => void
 }
 
@@ -43,7 +44,7 @@ function formatRecordingTime(seconds: number): string {
 
 const TASK_FILTER_OPTIONS = ['All', 'Pending', 'In Progress', 'Overdue', 'Completed'] as const
 
-export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, onConvertToTask }: ChatScreenProps) {
+export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, onContactInfo, onConvertToTask }: ChatScreenProps) {
   const [text, setText] = useState('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msgId: string; isTask: boolean; text: string; senderId: string; msgType: string; deletedForEveryone: boolean; createdAt: string; isStarred: boolean; isPinned: boolean } | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -414,7 +415,7 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
             <ChevronLeft size={24} strokeWidth={2.5} />
             <span className="text-[17px]">Chats</span>
           </button>
-          <div className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer" onClick={chat.type === ChatType.GROUP ? onGroupInfo : undefined}>
+          <div className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer" onClick={chat.type === ChatType.GROUP ? onGroupInfo : onContactInfo}>
             <Avatar name={displayName} size={32} />
             <div className="min-w-0">
               <div className="text-[16px] font-semibold truncate dark:text-white">{displayName}</div>
@@ -441,16 +442,20 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
             {showKebabMenu && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowKebabMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-[#1C1C1E] rounded-xl shadow-lg py-1.5 z-50">
-                  {chat.type === ChatType.GROUP && (
-                    <button
-                      onClick={() => { setShowKebabMenu(false); onGroupInfo() }}
-                      className="w-full text-left px-4 py-2.5 text-[15px] dark:text-white active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
-                    >
-                      <Users size={18} className="text-gray-500" />
-                      Group info
-                    </button>
-                  )}
+                <div className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#1C1C1E] rounded-xl shadow-lg py-1.5 z-50">
+                  {/* Contact info / Group info */}
+                  <button
+                    onClick={() => {
+                      setShowKebabMenu(false)
+                      if (chat.type === ChatType.GROUP) onGroupInfo()
+                      else onContactInfo()
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-[15px] dark:text-white active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                  >
+                    {chat.type === ChatType.GROUP ? <Users size={18} className="text-gray-500" /> : <User size={18} className="text-gray-500" />}
+                    {chat.type === ChatType.GROUP ? 'Group info' : 'Contact info'}
+                  </button>
+                  {/* Search messages */}
                   <button
                     onClick={() => { setShowKebabMenu(false); setShowSearch(true) }}
                     className="w-full text-left px-4 py-2.5 text-[15px] dark:text-white active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
@@ -458,6 +463,20 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
                     <Search size={18} className="text-gray-500" />
                     Search messages
                   </button>
+                  {/* Add to favourites */}
+                  <button
+                    onClick={async () => {
+                      setShowKebabMenu(false)
+                      try {
+                        await api.post(`/api/chats/${chat.id}/favourite`)
+                      } catch {}
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-[15px] dark:text-white active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                  >
+                    <Star size={18} className="text-gray-500" />
+                    Add to favourites
+                  </button>
+                  {/* Close chat */}
                   <button
                     onClick={() => { setShowKebabMenu(false); onBack() }}
                     className="w-full text-left px-4 py-2.5 text-[15px] dark:text-white active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
@@ -465,24 +484,80 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
                     <X size={18} className="text-gray-500" />
                     Close chat
                   </button>
+                  {/* Report */}
+                  <button
+                    onClick={() => {
+                      setShowKebabMenu(false)
+                      alert('Report submitted. We will review this chat.')
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-[15px] dark:text-white active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                  >
+                    <Flag size={18} className="text-gray-500" />
+                    Report
+                  </button>
+                  {/* Block (1:1 only) */}
+                  {chat.type === ChatType.DIRECT && (
+                    <button
+                      onClick={async () => {
+                        setShowKebabMenu(false)
+                        if (!confirm('Block this contact? They will no longer be able to send you messages.')) return
+                        try {
+                          await api.post(`/api/chats/${chat.id}/block`)
+                        } catch {}
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-[15px] dark:text-white active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                    >
+                      <Ban size={18} className="text-gray-500" />
+                      Block
+                    </button>
+                  )}
+                  {/* Divider */}
+                  <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] my-1" />
+                  {/* Clear chat */}
+                  <button
+                    onClick={async () => {
+                      setShowKebabMenu(false)
+                      if (!confirm('Clear all messages in this chat? This cannot be undone.')) return
+                      try {
+                        await api.post(`/api/chats/${chat.id}/clear`)
+                      } catch {}
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-[15px] text-red-500 active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                  >
+                    <Trash2 size={18} />
+                    Clear chat
+                  </button>
+                  {/* Delete chat */}
+                  <button
+                    onClick={async () => {
+                      setShowKebabMenu(false)
+                      if (!confirm('Delete this chat? All messages will be cleared and you will leave the chat.')) return
+                      try {
+                        await api.delete(`/api/chats/${chat.id}`)
+                        onBack()
+                      } catch {}
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-[15px] text-red-500 active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                  >
+                    <Trash2 size={18} />
+                    Delete chat
+                  </button>
+                  {/* Exit group (groups only) */}
                   {chat.type === ChatType.GROUP && (
-                    <>
-                      <div className="h-px bg-black/[0.06] dark:bg-white/[0.06] my-1" />
-                      <button
-                        onClick={async () => {
-                          setShowKebabMenu(false)
-                          if (!confirm('Are you sure you want to exit this group?')) return
-                          try {
-                            await api.post(`/api/chats/${chat.id}/leave`)
-                            onBack()
-                          } catch {}
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-[15px] text-red-500 active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
-                      >
-                        <LogOut size={18} />
-                        Exit group
-                      </button>
-                    </>
+                    <button
+                      onClick={async () => {
+                        setShowKebabMenu(false)
+                        if (!confirm('Are you sure you want to exit this group?')) return
+                        try {
+                          await api.post(`/api/chats/${chat.id}/leave`)
+                          onBack()
+                        } catch {}
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-[15px] text-red-500 active:bg-gray-100 dark:active:bg-gray-800 flex items-center gap-3"
+                    >
+                      <LogOut size={18} />
+                      Exit group
+                    </button>
                   )}
                 </div>
               </>

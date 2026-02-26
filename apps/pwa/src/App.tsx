@@ -13,13 +13,14 @@ import ConvertToTaskSheet from './screens/ConvertToTaskSheet'
 import NewChatScreen from './screens/NewChatScreen'
 import NewGroupScreen from './screens/NewGroupScreen'
 import GroupInfoScreen from './screens/GroupInfoScreen'
+import ContactInfoScreen from './screens/ContactInfoScreen'
 import ApproveUsersScreen from './screens/ApproveUsersScreen'
 import ProfileScreen from './screens/ProfileScreen'
 import MembersScreen from './screens/MembersScreen'
 import AdminSummarySheet from './screens/AdminSummarySheet'
 import { Chat } from './types'
 
-type Screen = 'main' | 'chat' | 'newChat' | 'newGroup' | 'groupInfo' | 'approveUsers' | 'profile' | 'members'
+type Screen = 'main' | 'chat' | 'newChat' | 'newGroup' | 'groupInfo' | 'contactInfo' | 'approveUsers' | 'profile' | 'members'
 
 export default function App() {
   const { user, token } = useAuthStore()
@@ -91,6 +92,7 @@ export default function App() {
           onBack={handleBackFromChat}
           onTaskDetail={setTaskDetailId}
           onGroupInfo={() => setScreen('groupInfo')}
+          onContactInfo={() => setScreen('contactInfo')}
           onConvertToTask={handleConvertToTask}
         />
       )}
@@ -118,6 +120,14 @@ export default function App() {
           chat={currentChat}
           onBack={() => setScreen('chat')}
           onExitGroup={() => { setScreen('main'); setCurrentChat(null) }}
+        />
+      )}
+
+      {/* Contact Info screen */}
+      {screen === 'contactInfo' && currentChat && (
+        <ContactInfoScreen
+          chat={currentChat}
+          onBack={() => setScreen('chat')}
         />
       )}
 
