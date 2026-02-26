@@ -117,6 +117,7 @@ export default function App() {
         <GroupInfoScreen
           chat={currentChat}
           onBack={() => setScreen('chat')}
+          onExitGroup={() => { setScreen('main'); setCurrentChat(null) }}
         />
       )}
 

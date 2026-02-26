@@ -7,6 +7,7 @@ import { getSocket, joinChat, leaveChat, emitTyping } from '../../services/socke
 import { formatMessageTime, formatMessageDate, MessageType, TaskStatus, TASK_STATUS_COLORS, TASK_STATUS_LABELS } from '@workchat/shared'
 import ConvertToTaskModal from './ConvertToTaskModal'
 import TaskDetailsPanel from '../task/TaskDetailsPanel'
+import GroupInfoPanel from './GroupInfoPanel'
 import VoiceRecorder from './VoiceRecorder'
 import VoiceNotePlayer from './VoiceNotePlayer'
 
@@ -35,6 +36,7 @@ export default function ChatPanel() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastTypingEmitRef = useRef<number>(0)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
+  const [showGroupInfo, setShowGroupInfo] = useState(false)
 
   // Search state
   const [showSearch, setShowSearch] = useState(false)
@@ -516,14 +518,14 @@ export default function ChatPanel() {
             </svg>
           ) : chatHeaderName.charAt(0).toUpperCase()}
         </div>
-        <div className="flex-1 min-w-0">
+        <button className="flex-1 min-w-0 text-left" onClick={() => chat?.type === 'GROUP' && setShowGroupInfo(!showGroupInfo)}>
           <div className="text-white font-medium text-[16px] truncate">{chatHeaderName}</div>
           <div className="text-white/70 text-xs truncate">
             {typingUsers.length > 0
               ? `${typingUsers.join(', ')} typing...`
               : chatHeaderStatus}
           </div>
-        </div>
+        </button>
         <div className="flex items-center gap-1">
           <button
             onClick={() => { setTasksOnlyView(!tasksOnlyView); setTaskFilter('all'); }}
@@ -1141,6 +1143,14 @@ export default function ChatPanel() {
           onClose={() => { setShowConvertModal(false); setSelectedMessage(null); }}
           message={{ id: selectedMessage.id, content: selectedMessage.content, chatId: chatId! }}
           members={chat?.members || []}
+        />
+      )}
+
+      {/* Group Info Panel */}
+      {showGroupInfo && chatId && (
+        <GroupInfoPanel
+          chatId={chatId}
+          onClose={() => setShowGroupInfo(false)}
         />
       )}
     </div>
