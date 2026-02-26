@@ -4,6 +4,12 @@ export enum UserRole {
   STAFF = 'STAFF',
 }
 
+export enum UserStatus {
+  PENDING = 'PENDING',
+  ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+}
+
 export interface User {
   id: string
   phone: string
@@ -11,6 +17,7 @@ export interface User {
   avatarUrl: string | null
   emoji: string | null
   role: UserRole
+  status?: UserStatus
   isApproved: boolean
   createdAt: string
 }
