@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from './stores/authStore'
-import { initSocket } from './services/socket'
+import { initSocket, getSocket } from './services/socket'
 import TabBar from './components/TabBar'
 import InstallPrompt from './components/InstallPrompt'
+import ErrorBoundary from './components/ErrorBoundary'
 import LoginScreen from './screens/LoginScreen'
 import ChatListScreen from './screens/ChatListScreen'
 import ChatScreen from './screens/ChatScreen'
@@ -31,14 +32,27 @@ export default function App() {
   const [convertTask, setConvertTask] = useState<{ messageId: string; text: string } | null>(null)
   const [showSummary, setShowSummary] = useState(false)
 
-  // Reconnect socket on app load if logged in
+  // Reconnect socket on app load or when token refreshes
   useEffect(() => {
-    if (token) initSocket(token)
+    if (token) {
+      const existing = getSocket()
+      if (existing) {
+        // Update auth token so reconnections use the fresh token
+        existing.auth = { token }
+        if (!existing.connected) existing.connect()
+      } else {
+        initSocket(token)
+      }
+    }
   }, [token])
 
   // Not logged in
   if (!user || !token) {
-    return <LoginScreen />
+    return (
+      <ErrorBoundary>
+        <LoginScreen />
+      </ErrorBoundary>
+    )
   }
 
   const handleOpenChat = (chat: Chat) => {
@@ -56,6 +70,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary>
     <div className="h-full flex flex-col bg-gray-100 dark:bg-[#1a1a1a] relative overflow-hidden">
       <InstallPrompt />
 
@@ -159,5 +174,6 @@ export default function App() {
         onTaskDetail={setTaskDetailId}
       />
     </div>
+    </ErrorBoundary>
   )
 }

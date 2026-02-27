@@ -87,6 +87,12 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
     fetchMessages(chat.id)
     joinChat(chat.id)
     const socket = getSocket()
+
+    // Rejoin room and refetch messages on socket reconnect
+    const connectHandler = () => {
+      joinChat(chat.id)
+      fetchMessages(chat.id)
+    }
     const handler = (data: { chatId: string; message: Message }) => {
       if (data.chatId === chat.id) addMessage(chat.id, data.message)
     }
@@ -127,6 +133,7 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
     const unpinnedHandler = (data: { chatId: string; messageId: string }) => {
       if (data.chatId === chat.id) toggleMessagePin(chat.id, data.messageId, false)
     }
+    socket?.on('connect', connectHandler)
     socket?.on('new_message', handler)
     socket?.on('typing', typingHandler)
     socket?.on('messages_read', readHandler)
@@ -136,6 +143,7 @@ export default function ChatScreen({ chat, onBack, onTaskDetail, onGroupInfo, on
     socket?.on('message_unpinned', unpinnedHandler)
     return () => {
       leaveChat(chat.id)
+      socket?.off('connect', connectHandler)
       socket?.off('new_message', handler)
       socket?.off('typing', typingHandler)
       socket?.off('messages_read', readHandler)
